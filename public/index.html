@@ -1,7 +1,9 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 
 <head>
+    <meta charset="UTF-8">
+    <title>Трамвай смерти — Мультиплеер</title>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
     <script src="/socket.io/socket.io.js"></script>
     <style>
@@ -9,8 +11,7 @@
             margin: 0;
             padding: 0;
             overflow: hidden;
-            /* Убирает скроллбары */
-            background-color: #000;
+            background: #000;
         }
     </style>
 </head>
@@ -18,396 +19,400 @@
 <body>
 
     <div id="video-storage" style="display: none;">
-        <video id="localVideo" autoplay playsinline muted style="display: block; width: 160px; height: 120px;"></video>
+        <video id="localVideo" autoplay playsinline muted></video>
     </div>
 
     <script>
         const socket = io();
+
         const config = {
             type: Phaser.AUTO,
-            // Используем внутренние размеры окна браузера
             width: window.innerWidth,
             height: window.innerHeight,
-            backgroundColor: '#2d2d2d',
+            backgroundColor: '#1a1a2e',
             scale: {
-                // Режим FIT растягивает игру, сохраняя пропорции
                 mode: Phaser.Scale.FIT,
-                // Центрируем игру в окне
                 autoCenter: Phaser.Scale.CENTER_BOTH,
-                // Автоматически менять размер при изменении окна браузера
-                parent: 'phaser-example',
-                width: 1280,  // "Эталонная" ширина
-                height: 720   // "Эталонная" высота
+                width: 1280,
+                height: 720
             },
-            scene: {
-                preload: preload,
-                create: create
-            }
-        }; const game = new Phaser.Game(config);
-
-        function preload() {
-            this.load.image('trolley', 'assets/trolley.png');
-            console.log("Phaser: Картинка трамвая загружается..."); // Для проверки в консоли
-        }
-
-        function create() {
-
-            // 1. Подготовка сцены и констант
-            const scene = this;
-            const localVideo = document.getElementById('localVideo');
-
-            // Создаем холст для захвата ОДИН РАЗ
-            const sendCanvas = document.createElement('canvas');
-            sendCanvas.width = 160;
-            sendCanvas.height = 120;
-            const sendCtx = sendCanvas.getContext('2d');
-
-            // 2. ОБРАБОТКА ВХОДЯЩИХ КАДРОВ (от других и от себя)
-            socket.on('playerFrame', (data) => {
-                const frameId = data.id;
-                const frameData = data.frame;
-
-                let targetVictim = null;
-                let suffix = "";
-
-                // Проверяем, кому принадлежит кадр
-                if (scene.victimA && scene.victimA.playerId === frameId) {
-                    targetVictim = scene.victimA;
-                    suffix = "A";
-                } else if (scene.victimB && scene.victimB.playerId === frameId) {
-                    targetVictim = scene.victimB;
-                    suffix = "B";
-                }
-
-                if (targetVictim && frameData) {
-                    const key = `canvas_vid_${suffix}`;
-
-                    // Если Canvas-текстуры еще нет — создаем
-                    if (!scene.textures.exists(key)) {
-                        scene.textures.createCanvas(key, 160, 120);
-                        targetVictim.videoSprite.setTexture(key);
-                        targetVictim.videoSprite.setDisplaySize(160, 120);
-                    }
-
-                    const canvasTexture = scene.textures.get(key);
-                    const img = new Image();
-                    img.onload = () => {
-                        targetVictim.videoSprite.setDisplaySize(160, 120);
-                        canvasTexture.context.drawImage(img, 0, 0, 160, 120);
-                        canvasTexture.update();
-                    };
-                    img.src = frameData;
-                }
-            });
-
-            // 3. ЗАПУСК КАМЕРЫ И ЦИКЛА ОТПРАВКИ
-            navigator.mediaDevices.getUserMedia({ video: { width: 160, height: 120 }, audio: false })
-                .then(stream => {
-                    localVideo.srcObject = stream;
-                    localVideo.play();
-
-                    // ХАК: Назначаем себя жертвой А принудительно для теста
-                    if (scene.victimA) {
-                        scene.victimA.playerId = socket.id;
-                    }
-
-                    const sendFrame = () => {
-                        // Проверяем, что видео реально играет
-                        if (localVideo.readyState >= 2 && !localVideo.paused && !localVideo.ended) {
-
-                            // 1. Рисуем текущий кадр с вебки на холст
-                            sendCtx.drawImage(localVideo, 0, 0, 160, 120);
-
-                            // 2. Кодируем в строку
-                            const base64 = sendCanvas.toDataURL('image/webp', 1);
-
-                            // 3. ОТПРАВЛЯЕМ НА СЕРВЕР (для других игроков)
-                            socket.emit('streamFrame', base64);
-
-                            // 4. ЛОКАЛЬНОЕ ОБНОВЛЕНИЕ (чтобы не зависало у тебя)
-                            // Мы вручную вызываем обработчик, имитируя приход данных
-                            updateVictimTexture(socket.id, base64);
-                        }
-                        setTimeout(() => requestAnimationFrame(sendFrame), 100);
-                    };
-
-                    // Вынесем логику отрисовки в отдельную функцию, чтобы не дублировать код
-                    function updateVictimTexture(frameId, frameData) {
-                        let targetVictim = null;
-                        let suffix = "";
-
-                        if (scene.victimA && scene.victimA.playerId === frameId) {
-                            targetVictim = scene.victimA;
-                            suffix = "A";
-                        } else if (scene.victimB && scene.victimB.playerId === frameId) {
-                            targetVictim = scene.victimB;
-                            suffix = "B";
-                        }
-
-                        if (targetVictim && frameData) {
-                            const key = `canvas_vid_${suffix}`;
-                            if (!scene.textures.exists(key)) {
-                                scene.textures.createCanvas(key, 160, 120);
-                                targetVictim.videoSprite.setTexture(key);
-                            }
-
-                            const canvasTexture = scene.textures.get(key);
-                            const img = new Image();
-                            img.onload = () => {
-                                targetVictim.videoSprite.setDisplaySize(160, 120);
-                                canvasTexture.context.drawImage(img, 0, 0, 160, 120);
-                                canvasTexture.update();
-                            };
-                            img.src = frameData;
-                        }
-                    }
-
-                    // Обновим обработчик от сервера, чтобы он использовал ту же функцию
-                    socket.on('playerFrame', (data) => {
-                        updateVictimTexture(data.id, data.frame);
-                    });
-
-                    requestAnimationFrame(sendFrame);
-                })
-                .catch(err => {
-                    console.error("Камера не включилась:", err);
-                });
-
-
-            // 1. РИСУЕМ КАРТУ
-            // ВАЖНО: Берем размеры именно ИГРОВОГО ХОЛСТА (те самые 1280x720)
-            const width = this.sys.game.config.width;
-            const height = this.sys.game.config.height;
-
-            const graphics = this.add.graphics();
-            graphics.lineStyle(6, 0x777777);
-
-            // Текст с подсказкой сверху
-            this.infoLabel = this.add.text(width / 2, 50, "", { fontSize: '32px' }).setOrigin(0.5);
-
-            // Рисуем рельсы относительно высоты игры
-            // Путь А (верхний)
-            const trackA_Y = height * 0.25;
-            graphics.lineBetween(0, trackA_Y, width, trackA_Y);
-            this.add.text(20, trackA_Y - 40, "ПУТЬ А", { fontSize: '24px', fill: '#fff' });
-
-            // Путь Б (нижний)
-            const trackB_Y = height * 0.65;
-            graphics.lineBetween(0, trackB_Y, width, trackB_Y);
-            this.add.text(20, trackB_Y - 40, "ПУТЬ Б", { fontSize: '24px', fill: '#fff' });
-
-            // Трамвай (ставим его слева посередине между путями)
-            this.trolley = this.add.image(150, height / 2, 'trolley');
-            this.trolley.setScale(0.1);
-
-            // Функция создания карты-жертвы
-            this.createVictim = (x, y, key) => {
-                const container = this.add.container(x, y);
-
-                // Белая рамка
-                const bg = this.add.rectangle(0, 0, 165, 125, 0xffffff).setStrokeStyle(4, 0x000000);
-
-                // Заглушка, пока видео нет
-                const videoSprite = this.add.sprite(0, 0).setDisplaySize(160, 120);
-
-                container.add([bg, videoSprite]);
-                container.videoSprite = videoSprite;
-                container.playerId = null; // Сюда будем записывать ID игрока
-                return container;
-            };
-
-            // Создаем две жертвы строго на путях
-            this.victimA = this.createVictim(width * 0.6, trackA_Y);
-            this.victimB = this.createVictim(width * 0.6, trackB_Y);
-
-            // Сетевая часть
-            socket.on('enemyMove', (data) => {
-                this.cardContainer.x = data.x;
-                this.cardContainer.y = data.y;
-            });
-
-            // --- КНОПКИ ВЫБОРА ---
-            const btnA = this.add.rectangle(width - 100, height * 0.25, 120, 50, 0x00ff00).setInteractive();
-            this.add.text(width - 140, height * 0.25 - 10, "ПУСК А", { fill: '#000' });
-
-            const btnB = this.add.rectangle(width - 100, height * 0.65, 120, 50, 0xffaa00).setInteractive();
-            this.add.text(width - 140, height * 0.65 - 10, "ПУСК Б", { fill: '#000' });
-
-
-            let isConductor = false; // По умолчанию мы просто игрок
-
-            // Получаем роль при старте
-            socket.on('initRole', (data) => {
-                this.updateRole(data.role === 'conductor');
-            });
-
-            socket.emit('playerReady');
-
-
-
-            // 2. КОМАНДЫ И ФУНКЦИИ
-            // Функция обновления интерфейса
-            this.updateRole = (conductorStatus) => {
-                isConductor = conductorStatus;
-                const statusText = isConductor ? "ТЫ СТРЕЛОЧНИК! Жми ПУСК" : "Жди выбора Стрелочника...";
-                this.infoLabel.setText(statusText);
-
-                // Прячем или показываем кнопки
-                btnA.setVisible(isConductor);
-                btnB.setVisible(isConductor);
-            };
-
-            // Обработка нажатия на кнопку А
-            btnA.on('pointerdown', () => {
-                this.startTrolley(trackA_Y); // Вызываем функцию движения
-                socket.emit('trolleyGo', { targetY: trackA_Y }); // Говорим серверу, что трамвай поехал
-            });
-
-            btnB.on('pointerdown', () => {
-                this.startTrolley(trackB_Y);
-                socket.emit('trolleyGo', { targetY: trackB_Y });
-            });
-
-
-
-            this.startTrolley = (targetY) => {
-                this.tweens.killTweensOf(this.trolley);
-
-                this.tweens.add({
-                    targets: this.trolley,
-                    y: targetY, // Перестраиваемся на выбранный путь
-                    duration: 500,
-                    onComplete: () => {
-                        this.tweens.add({
-                            targets: this.trolley,
-                            x: 2000,
-                            duration: 2000,
-                            onUpdate: () => {
-                                // Определяем, какую жертву проверять в зависимости от текущего Y поезда
-                                let currentVictim = (targetY === trackA_Y) ? this.victimA : this.victimB;
-
-                                // Проверяем дистанцию по X (когда поезд "наезжает" на карточку)
-                                if (!currentVictim.isDead && Math.abs(this.trolley.x - currentVictim.x) < 80) {
-                                    this.killVictim(currentVictim);
-                                }
-                            }
-                        });
-                    }
-                });
-            };
-
-            socket.on('resetTrolleyVisual', () => {
-                console.log("Клиент: Получена команда возврата!");
-
-                // Мгновенно останавливаем любые движения
-                this.tweens.killTweensOf(this.trolley);
-
-                // Телепортируем за левый край
-                this.trolley.x = -300;
-                this.trolley.y = this.sys.game.config.height / 2;
-
-                // Выкатываем плавно
-                this.tweens.add({
-                    targets: this.trolley,
-                    x: 150,
-                    duration: 1000,
-                    ease: 'Back.out'
-                });
-            });
-
-            // 2. Кнопки тоже используют this.startTrolley
-            btnA.on('pointerdown', () => {
-                // Используем стрелочную функцию, чтобы сохранить контекст
-                this.startTrolley(trackA_Y);
-                socket.emit('trolleyGo', { targetY: trackA_Y });
-            });
-
-            socket.on('trolleyMoveRemote', (data) => {
-                console.log('Получена команда от сервера на движение!');
-                // Запускаем ту же самую функцию анимации
-                this.startTrolley(data.targetY);
-            });
-
-
-            this.killVictim = (victim) => {
-                victim.isDead = true;
-                this.cameras.main.shake(150, 0.01); // Тряска камеры при ударе
-
-                this.tweens.add({
-                    targets: victim,
-                    alpha: 0,
-                    scale: 0.3,
-                    angle: 45,
-                    y: victim.y - 100, // Отлетает вверх
-                    duration: 400,
-                    ease: 'Power2'
-                });
-            };
-
-            socket.on('newRound', (data) => {
-                console.log("Полный объект данных от сервера:", data);
-
-                // Сохраняем ID в объекты Phaser, чтобы сокеты знали, куда рисовать видео
-                this.victimA.playerId = data.victimA_Id;
-                this.victimB.playerId = data.victimB_Id;
-
-                // Проверяем: мой ли ID совпадает с ID стрелочника, присланным сервером
-                const amIConductor = (socket.id === data.conductorId);
-                // Вызываем функцию обновления интерфейса
-                this.updateRole(amIConductor);
-
-                // Сбрасываем обе жертвы
-                [this.victimA, this.victimB].forEach(v => {
-                    v.alpha = 1;
-                    v.scale = 1;
-                    v.angle = 0;
-                    v.isDead = false;
-                    // Возвращаем на исходный Y (на всякий случай после анимации смерти)
-                });
-
-                this.victimA.y = trackA_Y;
-                this.victimB.y = trackB_Y;
-
-            });
-
-            // Функция сброса поля
-            this.resetBoard = () => {
-                // Оживляем карту
-                this.cardContainer.isDead = false;
-                this.cardContainer.alpha = 1;
-                this.cardContainer.angle = 0;
-                this.cardContainer.scale = 1;
-                this.cardContainer.x = this.sys.game.config.width / 2;
-                this.cardContainer.y = this.sys.game.config.height - 120;
-            };
-
-
+            scene: []
         };
 
-        function update() {
-            // Функция для отрисовки кадра на спрайте жертвы
-            const updateVictimVideo = (victim, suffix) => {
-                if (victim.playerId && this.remoteFrames[victim.playerId]) {
-                    const textureKey = `vid_${suffix}`;
+        const game = new Phaser.Game(config);
 
-                    // Если текстура уже была — удаляем старую из памяти
-                    if (this.textures.exists(textureKey)) {
-                        this.textures.remove(textureKey);
-                    }
+        // ====================== ГЛАВНОЕ МЕНЮ ======================
+        class MenuScene extends Phaser.Scene {
+            constructor() { super('MenuScene'); }
+            create() {
+                const w = this.sys.game.config.width;
+                const h = this.sys.game.config.height;
 
-                    // Добавляем новый кадр
-                    this.textures.addBase64(textureKey, this.remoteFrames[victim.playerId]);
+                this.add.text(w / 2, h * 0.25, "ТРАМВАЙ СМЕРТИ", { fontSize: '72px', fill: '#ff3366', fontStyle: 'bold' }).setOrigin(0.5);
+                this.add.text(w / 2, h * 0.38, "Многопользовательская версия", { fontSize: '28px', fill: '#bbbbff' }).setOrigin(0.5);
 
-                    // Применяем к спрайту
-                    victim.videoSprite.setTexture(textureKey);
-                    victim.videoSprite.setDisplaySize(160, 120); // Фиксируем размер
-                }
-            };
+                const joinBtn = this.add.rectangle(w / 2, h * 0.65, 420, 90, 0x00cc66).setInteractive({ useHandCursor: true });
+                this.add.text(w / 2, h * 0.65, "ПРИСОЕДИНИТЬСЯ К ИГРЕ", { fontSize: '34px', fill: '#000', fontStyle: 'bold' }).setOrigin(0.5);
 
-            if (this.victimA) updateVictimVideo(this.victimA, 'A');
-            if (this.victimB) updateVictimVideo(this.victimB, 'B');
+                joinBtn.on('pointerdown', () => this.scene.start('LobbyScene'));
+                joinBtn.on('pointerover', () => joinBtn.setFillStyle(0x00ff99));
+                joinBtn.on('pointerout', () => joinBtn.setFillStyle(0x00cc66));
+            }
         }
 
+        // ====================== ЛОББИ ======================
+        class LobbyScene extends Phaser.Scene {
+            constructor() { super('LobbyScene'); }
+            create() {
+                const w = this.sys.game.config.width;
+                const h = this.sys.game.config.height;
+
+                this.add.rectangle(0, 0, w, h, 0x0f0f1e).setOrigin(0);
+
+                this.add.text(w / 2, 80, "ЛОББИ", { fontSize: '52px', fill: '#fff' }).setOrigin(0.5);
+                this.statusText = this.add.text(w / 2, 160, "Ожидание игроков...", { fontSize: '32px', fill: '#ffff00' }).setOrigin(0.5);
+                this.playerListText = this.add.text(w / 2, 240, "", { fontSize: '26px', fill: '#ccc', align: 'center' }).setOrigin(0.5);
+
+                this.startBtn = this.add.rectangle(w / 2, h - 140, 340, 80, 0xff3366).setInteractive().setVisible(false);
+                this.add.text(w / 2, h - 140, "НАЧАТЬ ИГРУ", { fontSize: '34px', fill: '#fff', fontStyle: 'bold' }).setOrigin(0.5);
+
+                this.startBtn.on('pointerdown', () => socket.emit('startGameRequest'));
+
+                socket.on('lobbyUpdate', (data) => {
+                    this.statusText.setText(`Игроков подключено: ${data.count}`);
+                    let list = "Подключённые игроки:\n";
+                    data.players.forEach((id, i) => list += `Игрок ${i + 1}: ${id.slice(-6)}\n`);
+                    this.playerListText.setText(list);
+                    this.startBtn.setVisible(data.count >= 3);
+                });
+
+                socket.emit('playerJoinLobby');
+            }
+        }
+
+        // ====================== ИГРОВАЯ СЦЕНА ======================
+        class GameScene extends Phaser.Scene {
+            constructor() { super('GameScene'); }
+
+            preload() {
+                this.load.image('trolley', 'assets/trolley.png');
+            }
+
+            create() {
+                const width = this.sys.game.config.width;
+                const height = this.sys.game.config.height;
+                const scene = this;
+                scene.lastFrames = {};
+                this.animationEnabled = false;
+                this.roundCounter = 0;
+
+                // Очищаем старые слушатели
+                socket.off('newRound');
+                socket.off('playerFrame');
+                socket.off('trolleyMoveRemote');
+                socket.off('resetTrolleyVisual');
+
+                // Тёмный фон
+                this.add.rectangle(0, 0, width, height, 0x1a1a2e).setOrigin(0);
+
+                // Базовые настройки позиций
+                this.conductorPos = { x: 150, y: height / 2 };
+                this.victimX = width * 0.6;
+
+                // Массивы для динамических объектов
+                this.victims = []; // Массив контейнеров жертв
+                this.dynamicUI = []; // Массив для рельс, кнопок и текста (чтобы удалять каждый раунд)
+
+
+                // === КАМЕРА ===
+                const localVideo = document.getElementById('localVideo');
+                const sendCanvas = document.createElement('canvas');
+                sendCanvas.width = 160;
+                sendCanvas.height = 120;
+                const sendCtx = sendCanvas.getContext('2d');
+
+                const FPS = 30;
+                const JPEG_QUALITY = 1;
+
+                navigator.mediaDevices.getUserMedia({
+                    video: { width: 160, height: 120, frameRate: { ideal: FPS, max: FPS } },
+                    audio: false
+                }).then(stream => {
+                    localVideo.srcObject = stream;
+                    localVideo.play();
+                    console.log('✅ Камера запущена');
+
+                    let lastSent = 0;
+                    const sendFrame = () => {
+                        const now = Date.now();
+                        if (now - lastSent < 1000 / FPS) {
+                            requestAnimationFrame(sendFrame);
+                            return;
+                        }
+                        lastSent = now;
+
+                        if (localVideo.readyState >= 2) {
+                            sendCtx.drawImage(localVideo, 0, 0, 160, 120);
+                            socket.emit('streamFrame', sendCanvas.toDataURL('image/jpeg', JPEG_QUALITY));
+                        }
+                        requestAnimationFrame(sendFrame);
+                    };
+                    sendFrame();
+                }).catch(err => console.error("Камера:", err));
+
+                // === ГРАФИКА ===
+                const graphics = this.add.graphics();
+                graphics.lineStyle(6, 0x777777);
+
+                this.infoLabel = this.add.text(width / 2, 50, "Ожидание первого раунда...", { fontSize: '32px', fill: '#fff' }).setOrigin(0.5);
+
+                this.trolley = this.add.image(150, height / 2, 'trolley').setScale(0.1);
+
+                const createVictim = (x, y, isConductor = false) => {
+                    const container = this.add.container(x, y);
+                    const bg = this.add.rectangle(0, 0, 165, 125, 0xffffff);
+                    const videoSprite = this.add.sprite(0, 0).setDisplaySize(160, 120);
+
+                    container.add([bg, videoSprite]);
+
+                    container.bg = bg; // Сохраняем ссылку на фон
+                    container.videoSprite = videoSprite;
+                    container.playerId = null;
+                    container.isDead = false;
+
+                    // Метод для смены роли на лету
+                    container.setRole = function (isCond) {
+                        this.bg.setStrokeStyle(isCond ? 6 : 4, isCond ? 0xffd700 : 0x000000);
+                        // Выводим стрелочника поверх остальных при пересечении
+                        if (isCond) {
+                            this.scene.children.bringToTop(this);
+                        }
+                    };
+
+                    container.setRole(isConductor);
+                    return container;
+                };
+
+
+                const frameLoadSeq = {};
+                const applyFrameToTarget = (data) => {
+                    if (!data || !data.frame || !data.id) return;
+
+                    scene.lastFrames[data.id] = data.frame;
+
+                    let target = null;
+                    if (this.conductorBox && this.conductorBox.playerId === data.id) {
+                        target = this.conductorBox;
+                    } else {
+                        // Ищем в массиве жертв
+                        target = this.victims.find(v => v.playerId === data.id);
+                    }
+
+                    if (!target || !target.videoSprite) return;
+
+                    const key = `vid_${data.id.slice(-8)}`;
+                    if (!this.textures.exists(key)) {
+                        this.textures.createCanvas(key, 160, 120);
+                    }
+
+                    // Всегда привязываем текстуру к спрайту!
+                    // Во 2-м раунде текстура уже есть, но новый спрайт о ней не знает.
+                    if (target.videoSprite.texture.key !== key) {
+                        target.videoSprite.setTexture(key);
+                    }
+
+                    const tex = this.textures.get(key);
+                    frameLoadSeq[data.id] = (frameLoadSeq[data.id] || 0) + 1;
+                    const token = frameLoadSeq[data.id];
+                    const img = new Image();
+                    img.onload = () => {
+                        if (frameLoadSeq[data.id] !== token) return;
+                        tex.context.clearRect(0, 0, 160, 120);
+                        tex.context.drawImage(img, 0, 0, 160, 120);
+                        tex.update();
+                        target.videoSprite.setDisplaySize(160, 120);
+                    };
+                    img.src = data.frame;
+                };
+
+                socket.on('playerFrame', (data) => applyFrameToTarget(data));
+
+
+
+                socket.on('newRound', (data) => {
+                    this.roundCounter = (this.roundCounter || 0) + 1;
+                    const amIConductor = socket.id === data.conductorId;
+
+                    this.infoLabel.setText(amIConductor
+                        ? "ТЫ СТРЕЛОЧНИК!\nВыбери путь А или Б"
+                        : "Жди выбора стрелочника...");
+
+                    // 1. Очищаем старый интерфейс
+                    this.dynamicUI.forEach(el => el.destroy());
+                    this.dynamicUI = [];
+
+                    // 2. Пул рамок
+                    let pool = [this.conductorBox, ...this.victims].filter(c => c != null);
+                    this.victims = [];
+
+                    const findAndRemove = (id) => {
+                        const idx = pool.findIndex(c => c.playerId === id);
+                        if (idx !== -1) return pool.splice(idx, 1)[0];
+                        return null;
+                    };
+
+                    // 3. Стрелочник
+                    let nextConductor = findAndRemove(data.conductorId) || pool.pop() || createVictim(this.conductorPos.x, this.conductorPos.y, true);
+                    nextConductor.playerId = data.conductorId;
+                    nextConductor.setRole(true);
+                    this.conductorBox = nextConductor;
+
+                    nextConductor.isDead = false;
+                    this.tweens.add({ targets: nextConductor, x: this.conductorPos.x, y: this.conductorPos.y, alpha: 1, scale: 1, angle: 0, duration: 1200, ease: 'Cubic.easeInOut' });
+
+                    // 4. Настройки путей
+                    const trackA_Y = height * 0.3;
+                    const trackB_Y = height * 0.7;
+                    const startX = width * 0.35; // Откуда начинаем класть жертв
+                    const spacingX = 170;        // Расстояние между жертвами
+
+                    const graphics = this.add.graphics();
+                    graphics.lineStyle(6, 0x777777);
+                    this.dynamicUI.push(graphics);
+
+                    // Функция для отрисовки жертв на конкретном пути
+                    const setupTrack = (victimsArray, targetY, trackName) => {
+                        // Рисуем рельсы
+                        graphics.lineBetween(0, targetY, width, targetY);
+                        const text = this.add.text(20, targetY - 40, trackName, { fontSize: '24px', fill: '#fff' });
+                        this.dynamicUI.push(text);
+
+                        // Кнопка пуска
+                        if (amIConductor) {
+                            const btn = this.add.rectangle(width - 100, targetY, 120, 50, trackName === "ПУТЬ А" ? 0x00ff00 : 0xffaa00).setInteractive();
+                            const btnText = this.add.text(width - 140, targetY - 10, "ПУСК", { fill: '#000', fontStyle: 'bold' });
+
+                            btn.on('pointerdown', () => {
+                                this.dynamicUI.forEach(el => { if (el.type === 'Rectangle') el.disableInteractive(); });
+                                this.startTrolley(targetY);
+                                socket.emit('trolleyGo', { targetY: targetY });
+                            });
+                            this.dynamicUI.push(btn, btnText);
+                        }
+
+                        // Расставляем жертв вдоль рельс
+                        victimsArray.forEach((vId, index) => {
+                            let vBox = findAndRemove(vId) || pool.pop() || createVictim(startX, targetY, false);
+                            vBox.playerId = vId;
+                            vBox.setRole(false);
+                            this.victims.push(vBox);
+
+                            // Сдвигаем каждую следующую жертву правее по оси X
+                            const targetX = startX + (index * spacingX);
+
+                            vBox.isDead = false;
+                            this.tweens.add({ targets: vBox, x: targetX, y: targetY, alpha: 1, scale: 1, angle: 0, duration: 1200, ease: 'Cubic.easeInOut' });
+                        });
+                    };
+
+                    // Генерируем оба пути
+                    setupTrack(data.trackA, trackA_Y, "ПУТЬ А");
+                    setupTrack(data.trackB, trackB_Y, "ПУТЬ Б");
+
+                    // 5. Удаляем лишние рамки
+                    pool.forEach(c => c.destroy());
+                });
+
+                const applyAllFrames = () => {
+                    console.log("applyAllFrames вызван");
+                    [this.victimA, this.victimB, this.conductorBox].forEach(victim => {
+                        if (victim && victim.playerId && scene.lastFrames[victim.playerId]) {
+                            const fakeData = { id: victim.playerId, frame: scene.lastFrames[victim.playerId] };
+                            socket._callbacks['$playerFrame'][0](fakeData);
+                        }
+                    });
+                };
+
+                // Остальные обработчики
+                socket.on('trolleyMoveRemote', (data) => {
+                    const targetY = data.targetY || (height * 0.25);
+                    this.startTrolley(targetY);
+                });
+
+                socket.on('resetTrolleyVisual', () => {
+                    this.tweens.killTweensOf(this.trolley);
+                    this.trolley.x = -300;
+                    this.trolley.y = height / 2;
+                    this.tweens.add({ targets: this.trolley, x: 150, duration: 1000, ease: 'Back.out' });
+                });
+
+                // Функция движения трамвая
+                this.startTrolley = (targetY) => {
+                    this.tweens.killTweensOf(this.trolley);
+
+                    this.tweens.add({
+                        targets: this.trolley,
+                        y: targetY,
+                        duration: 500,
+                        onComplete: () => {
+                            this.tweens.add({
+                                targets: this.trolley,
+                                x: width + 200, // Уезжаем за край экрана
+                                duration: 2500, // Чуть дольше, чтобы успел всех переехать
+                                onUpdate: () => {
+                                    // Проверяем ВСЕХ жертв
+                                    this.victims.forEach(v => {
+                                        // Если жертва на текущем пути (совпадает Y) 
+                                        // и трамвай доехал до её позиции X
+                                        if (!v.isDead && Math.abs(targetY - v.y) < 30 && Math.abs(this.trolley.x - v.x) < 80) {
+                                            this.killVictim(v);
+                                        }
+                                    });
+                                }
+                            });
+                        }
+                    });
+                };
+
+                // Анимация убийства жертвы
+                this.killVictim = (victim) => {
+                    if (!victim || victim.isDead) return;
+
+                    victim.isDead = true;
+                    this.cameras.main.shake(150, 0.01);
+
+                    this.tweens.add({
+                        targets: victim,
+                        alpha: 0,
+                        scale: 0.3,
+                        angle: 45,
+                        y: victim.y - 100,
+                        duration: 400,
+                        ease: 'Power2'
+                    });
+                };
+            }
+
+            update() { }
+        }
+
+        // Регистрация сцен
+        game.scene.add('MenuScene', MenuScene);
+        game.scene.add('LobbyScene', LobbyScene);
+        game.scene.add('GameScene', GameScene);
+
+        game.scene.start('MenuScene');
+
+        // Переход в игру + сразу запрашиваем первый раунд
+        socket.on('startGame', () => {
+            game.scene.stop('LobbyScene');
+            game.scene.start('GameScene');
+
+            // Важно: после запуска игры сразу просим сервер начать первый раунд
+            setTimeout(() => {
+                socket.emit('requestFirstRound');
+            }, 1500); // небольшая задержка, чтобы сцена успела инициализироваться
+        });
     </script>
 </body>
 
