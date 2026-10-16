@@ -451,7 +451,7 @@
             <ul class="steps">
                 <li><span class="step-num">1</span><span>Соберите <b>минимум 3 игрока</b> и включите камеру.</span></li>
                 <li><span class="step-num">2</span><span>Каждый раунд один игрок — <b>стрелочник</b>, остальные лежат на путях A и B и тянут по <b>карте</b>: невинного на свой путь, негодяя — на чужой, или действие.</span></li>
-                <li><span class="step-num">3</span><span>30 секунд на <b>уговоры</b> — и стрелочник пускает трамвай.</span></li>
+                <li><span class="step-num">3</span><span>90 секунд на <b>уговоры</b> — и стрелочник пускает трамвай.</span></li>
                 <li><span class="step-num skull"><svg><use href="#i-skull" /></svg></span><span>Каждый игрок проигравшей стороны получает <b>жетон смерти</b>. Пять жетонов — и вы <b>выбываете</b>.</span></li>
             </ul>
         </div>
@@ -502,6 +502,7 @@
                 </div>
             </div>
             <div class="hud-right">
+                <button class="btn btn-ghost btn-sm" id="fs-btn" aria-label="Полный экран">⛶</button>
                 <button class="btn btn-ghost btn-sm" id="game-leave">Выйти</button>
             </div>
         </div>
@@ -743,7 +744,7 @@
             round: null,
             launched: false,
             timerEnd: 0,
-            timerTotal: 20000
+            timerTotal: 90000
         };
 
         const $ = (id) => document.getElementById(id);
@@ -808,6 +809,27 @@
         renderMute();
         document.addEventListener('pointerdown', () => Sound.init(), { once: true });
 
+        // ====================== ПОЛНЫЙ ЭКРАН ======================
+        const fsSupported = !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen);
+        const isFullscreen = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+        function enterFullscreen() {
+            if (!fsSupported || isFullscreen()) return;
+            const el = document.documentElement;
+            const req = el.requestFullscreen || el.webkitRequestFullscreen;
+            try { const r = req.call(el, { navigationUI: 'hide' }); if (r && r.catch) r.catch(() => { }); } catch (e) { }
+        }
+        function toggleFullscreen() {
+            if (!isFullscreen()) return enterFullscreen();
+            const exit = document.exitFullscreen || document.webkitExitFullscreen;
+            try { const r = exit.call(document); if (r && r.catch) r.catch(() => { }); } catch (e) { }
+        }
+        if (!fsSupported) $('fs-btn').style.display = 'none';
+        $('fs-btn').addEventListener('click', toggleFullscreen);
+        // Пересчитываем размер холста после входа/выхода из полноэкранного режима
+        ['fullscreenchange', 'webkitfullscreenchange'].forEach(ev => document.addEventListener(ev, () => {
+            if (game) setTimeout(() => game.scale.refresh(), 50);
+        }));
+
         // ====================== МЕНЮ ======================
         try { $('name-input').value = localStorage.getItem('trolley-name') || ''; } catch (e) { }
 
@@ -817,6 +839,7 @@
             if (!name) return;
             Sound.init();
             Sound.join();
+            enterFullscreen();
             state.name = name;
             try { localStorage.setItem('trolley-name', name); } catch (e) { }
             state.joined = true;
@@ -839,7 +862,7 @@
 
         // ====================== ЛОББИ ======================
         $('rule-pips').innerHTML = pipsHTML(3, 5);
-        $('start-btn').addEventListener('click', () => { Sound.click(); socket.emit('startGameRequest'); });
+        $('start-btn').addEventListener('click', () => { Sound.click(); enterFullscreen(); socket.emit('startGameRequest'); });
 
         socket.on('lobbyUpdate', (data) => {
             state.players = data.players;
@@ -948,7 +971,9 @@
         // ====================== ИГРОВАЯ СЦЕНА ======================
         const W = 1280, H = 720;
         const MAIN_Y = 360, SWITCH_X = 330;
-        const TRACK_Y = { A: 215, B: 545 };
+        const TRACK_Y = { A: 205, B: 520 };
+        // Рисуем в реальном разрешении экрана, а мир остаётся 1280×720 — так текст и графика чёткие
+        const RES = Math.min(2, Math.max(1, Math.ceil((window.devicePixelRatio || 1) * Math.max(window.innerWidth / 1280, window.innerHeight / 720))));
         const TRACK_COLOR = { A: 0x3ddc97, B: 0xffb020 };
         const CONDUCTOR_POS = { x: 170, y: 150 };
         const LEVER_POS = { x: 292, y: 292 };
@@ -988,8 +1013,8 @@
                 scale: {
                     mode: Phaser.Scale.FIT,
                     autoCenter: Phaser.Scale.CENTER_BOTH,
-                    width: W,
-                    height: H
+                    width: W * RES,
+                    height: H * RES
                 },
                 scene: [GameScene]
             });
@@ -1009,12 +1034,17 @@
             constructor() { super('GameScene'); }
 
             preload() {
-                this.load.svg('trolley-body', 'assets/trolley.svg', { width: 360, height: 170 });
-                this.load.svg('trolley-wheel', 'assets/wheel.svg', { width: 44, height: 44 });
-                this.load.svg('skull', 'assets/skull.svg', { width: 32, height: 32 });
+                this.load.svg('trolley-body', 'assets/trolley.svg', { width: 720, height: 340 });
+                this.load.svg('trolley-wheel', 'assets/wheel.svg', { width: 88, height: 88 });
+                this.load.svg('skull', 'assets/skull.svg', { width: 96, height: 96 });
             }
 
             create() {
+                // Камера с зумом RES: координаты мира прежние, картинка в полном разрешении
+                this.cameras.main.setZoom(RES).centerOn(W / 2, H / 2);
+                const addText = this.add.text.bind(this.add);
+                this.add.text = (x, y, text, style = {}) => addText(x, y, text, { resolution: RES, ...style });
+
                 this.boxes = new Map();      // id -> контейнер с камерой
                 this.frameSeq = {};
                 this.paths = {};
@@ -1167,7 +1197,8 @@
                     g.fillStyle(0x454c60, 1).fillCircle(l.x - 2, l.y - 2, 5);
                 });
 
-                const rt = this.add.renderTexture(0, 0, W, H).setOrigin(0).setDepth(0);
+                const rt = this.add.renderTexture(0, 0, W * RES, H * RES).setOrigin(0).setScale(1 / RES).setDepth(0);
+                g.setScale(RES);
                 rt.draw(g);
                 g.destroy();
 
@@ -1338,7 +1369,7 @@
                     for (let k = 0; k < state.maxTokens; k++) {
                         const on = k < p.tokens;
                         const sk = this.add.image(BOARD.x + BOARD.w - 18 - (state.maxTokens - 1 - k) * 19 * s, y, 'skull')
-                            .setScale(0.5 * s)
+                            .setScale((0.5 / 3) * s)
                             .setTint(on ? 0xff2e4d : 0xffffff)
                             .setAlpha(on ? 1 : out ? 0.06 : 0.14);
                         this.boardRows.add(sk);
@@ -1357,8 +1388,8 @@
                 beam.fillTriangle(158, -44, 460, -100, 460, 30);
 
                 const shadow = this.add.ellipse(0, 4, 360, 30, 0x000000, 0.45);
-                const body = this.add.image(-180, -170, 'trolley-body').setOrigin(0, 0);
-                const wheels = [-85, 75].map(x => this.add.image(x, -22, 'trolley-wheel'));
+                const body = this.add.image(-180, -170, 'trolley-body').setOrigin(0, 0).setScale(0.5);
+                const wheels = [-85, 75].map(x => this.add.image(x, -22, 'trolley-wheel').setScale(0.5));
                 t.add([beam, shadow, body, ...wheels]);
 
                 this.trolley = t;
@@ -1435,7 +1466,7 @@
                 for (let k = 0; k < n; k++) {
                     const on = k < tokens;
                     box.pips.add(this.add.image((k - (n - 1) / 2) * 20, 0, 'skull')
-                        .setScale(0.55).setTint(on ? 0xff2e4d : 0xffffff).setAlpha(on ? 1 : 0.22));
+                        .setScale(0.55 / 3).setTint(on ? 0xff2e4d : 0xffffff).setAlpha(on ? 1 : 0.22));
                 }
             }
 
@@ -1514,7 +1545,7 @@
             }
 
             // Карта: лицо или рубашка (card === null)
-            createCardObj(card) {
+            createCardObj(card, owner) {
                 const c = this.add.container(0, 0).setDepth(9);
                 const g = this.add.graphics();
                 g.fillStyle(0x000000, 0.45).fillRoundedRect(-CARD_W / 2 + 3, -CARD_H / 2 + 5, CARD_W, CARD_H, 10);
@@ -1528,7 +1559,7 @@
                 for (let x = -CARD_W / 2 + 12; x <= CARD_W / 2 - 12; x += 8) {
                     for (let y = -CARD_H / 2 + 12; y <= CARD_H / 2 - 12; y += 8) bg.fillCircle(x, y, 1.2);
                 }
-                back.add([bg, this.add.image(0, 0, 'skull').setScale(1.3).setTint(0xff2e4d)]);
+                back.add([bg, this.add.image(0, 0, 'skull').setScale(1.3 / 3).setTint(0xff2e4d)]);
 
                 if (card) {
                     const st = CARD_STYLE[card.type];
@@ -1549,6 +1580,13 @@
                         align: 'center', wordWrap: { width: CARD_W - 14 }
                     }).setOrigin(0.5, 0);
                     face.add([fg, band, emoji, title, text]);
+                    // Чья карта — подпись под картой
+                    if (owner) {
+                        face.add(this.add.text(0, CARD_H / 2 + 13, `🃏 ${owner}`, {
+                            fontFamily: FONT, fontSize: '13px', fontStyle: '600', color: '#f2efe9',
+                            backgroundColor: 'rgba(7,8,13,0.88)', padding: { x: 8, y: 3 }
+                        }).setOrigin(0.5));
+                    }
                 }
 
                 c.add([g, back, face]);
@@ -1632,10 +1670,29 @@
                 this.tweens.add({ targets: t, y: y - 40, alpha: 0, delay: 1100, duration: 500, onComplete: () => t.destroy() });
             }
 
-            applyAction(draw, box) {
+            // Отметка над рамкой: какую карту действия вытянул игрок
+            addActionChip(box, card) {
+                if (box.actionChip) box.actionChip.destroy();
+                const chip = this.add.text(0, -BOX_H / 2 - 16, `${card.emoji} ${card.title}`, {
+                    fontFamily: FONT, fontSize: '13px', fontStyle: '700', color: '#07080d',
+                    backgroundColor: '#b388ff', padding: { x: 8, y: 3 }
+                }).setOrigin(0.5);
+                box.add(chip);
+                box.actionChip = chip;
+            }
+
+            applyAction(draw, box, silent) {
                 const a = draw.card.action;
-                Sound.action(a);
+                if (!silent) Sound.action(a);
                 if (!box) return;
+                this.addActionChip(box, draw.card);
+                if (silent) {
+                    if (a === 'shield') {
+                        box.badge = this.add.text(BOX_W / 2 - 4, -BOX_H / 2 + 4, '🛡️', { fontSize: '30px' }).setOrigin(0.5);
+                        box.add(box.badge);
+                    }
+                    return;
+                }
                 const top = box.y - (BOX_H / 2) * box.scale;
                 if (a === 'shield') {
                     const badge = this.add.text(BOX_W / 2 - 4, -BOX_H / 2 + 4, '🛡️', { fontSize: '30px' }).setOrigin(0.5);
@@ -1647,7 +1704,7 @@
                 }
                 if (a === 'defector') this.floatText(box.x, top - 10, `→ путь ${draw.to}`, '#b388ff');
                 if (a === 'medkit') { this.floatText(box.x, top - 10, '−1 жетон', '#3ddc97'); this.renderPips(box); }
-                if (a === 'sabotage') this.floatText(CONDUCTOR_POS.x, CONDUCTOR_POS.y - 80, 'Только 10 секунд!', '#ffb020');
+                if (a === 'sabotage') this.floatText(CONDUCTOR_POS.x, CONDUCTOR_POS.y - 80, 'Только 30 секунд!', '#ffb020');
                 if (a === 'double') this.floatText(box.x, top - 10, '×2 жетона', '#ff2e4d');
             }
 
@@ -1678,6 +1735,7 @@
                     box.isDead = false;
                     box.setVisible(true);
                     if (box.badge) { box.badge.destroy(); box.badge = null; }
+                    if (box.actionChip) { box.actionChip.destroy(); box.actionChip = null; }
                     this.tweens.killTweensOf(box);
                     box.setAngle(0);
                     this.styleBox(box, pos.role);
@@ -1691,7 +1749,7 @@
                 // Раскрытие карт: с колоды — к игроку — переворот — на путь
                 const animate = data.revealLeft > 800;
                 data.draws.forEach((draw, i) => {
-                    const c = this.createCardObj(draw.card);
+                    const c = this.createCardObj(draw.card, nameById(draw.playerId));
                     this.cardObjs.push(c);
                     const slot = slots.get(draw.card.id);
                     const pos = placements.get(draw.playerId);
@@ -1718,7 +1776,7 @@
                             this.makeReadable(c);
                         } else {
                             c.destroy();
-                            if (draw.card.action === 'shield' && box) this.applyAction(draw, box);
+                            this.applyAction(draw, box, true);
                         }
                         return;
                     }
@@ -1925,19 +1983,19 @@
                     fontFamily: FONT, fontSize: '15px', fontStyle: '700', color: out ? '#ffffff' : '#ff8a96',
                     backgroundColor: out ? 'rgba(200,20,45,0.9)' : 'rgba(7,8,13,0.9)', padding: { x: 28, y: 5 }
                 }).setOrigin(0.5);
-                const mSkull = this.add.image(-mText.width / 2 + 15, 0, 'skull').setScale(0.55).setTint(out ? 0xffffff : 0xff2e4d);
+                const mSkull = this.add.image(-mText.width / 2 + 15, 0, 'skull').setScale(0.55 / 3).setTint(out ? 0xffffff : 0xff2e4d);
                 marker.add([mText, mSkull]);
                 marker.setScale(Math.min(1, s * 1.05));
                 this.markers.push(marker);
 
-                const coin = this.add.image(cx, cy, 'skull').setDepth(31).setScale(0.2).setTint(0xff2e4d);
+                const coin = this.add.image(cx, cy, 'skull').setDepth(31).setScale(0.2 / 3).setTint(0xff2e4d);
                 const coinGlow = this.add.image(cx, cy, 'soft').setDepth(30).setScale(0.5).setTint(0xff2e4d).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.8);
                 this.tweens.add({ targets: [coin, coinGlow], y: cy - 90 * s, duration: 450, ease: 'Cubic.easeOut' });
-                this.tweens.add({ targets: coin, scale: 1.6, duration: 450, ease: 'Back.out' });
-                this.tweens.add({ targets: coin, scaleX: { from: 1.6, to: -1.6 }, delay: 450, duration: 180, yoyo: true, repeat: 1 });
+                this.tweens.add({ targets: coin, scale: 1.6 / 3, duration: 450, ease: 'Back.out' });
+                this.tweens.add({ targets: coin, scaleX: { from: 1.6 / 3, to: -1.6 / 3 }, delay: 450, duration: 180, yoyo: true, repeat: 1 });
                 this.time.delayedCall(420, () => Sound.token());
                 this.tweens.add({
-                    targets: [coin, coinGlow], y: cy, scale: 0.55, alpha: { from: 1, to: 0.9 }, delay: 1200, duration: 320, ease: 'Cubic.easeIn',
+                    targets: [coin, coinGlow], y: cy, scale: 0.55 / 3, alpha: { from: 1, to: 0.9 }, delay: 1200, duration: 320, ease: 'Cubic.easeIn',
                     onComplete: () => {
                         coin.destroy();
                         coinGlow.destroy();
@@ -1949,8 +2007,8 @@
                 this.cameras.main.shake(isMe ? 380 : 220, isMe ? 0.018 : 0.01);
                 if (isMe) {
                     this.cameras.main.flash(300, 255, 60, 80);
-                    this.cameras.main.zoomTo(1.06, 120, 'Quad.easeOut', true);
-                    this.time.delayedCall(140, () => this.cameras.main.zoomTo(1, 400, 'Quad.easeInOut', true));
+                    this.cameras.main.zoomTo(RES * 1.06, 120, 'Quad.easeOut', true);
+                    this.time.delayedCall(140, () => this.cameras.main.zoomTo(RES, 400, 'Quad.easeInOut', true));
                 }
             }
 
@@ -2145,7 +2203,7 @@
             const myCard = myDraw ? `Ваша карта: ${esc(myDraw.card.emoji)} <b>${esc(myDraw.card.title)}</b>` : '';
             const extras = [];
             if (data.multiplier > 1) extras.push('☠️ Двойная ставка');
-            if (data.roundTime < 20000) extras.push('⏱️ Саботаж');
+            if (data.roundTime < 90000) extras.push('⏱️ Саботаж');
             const extraText = extras.length ? ` · ${extras.join(' · ')}` : '';
 
             if (amConductor) {
