@@ -3,12 +3,16 @@ const app = express();
 const http = require('http').createServer(app);
 const io = require('socket.io')(http, { maxHttpBufferSize: 1e5 });
 const path = require('path');
+const { buildDeck, shuffle } = require('./cards');
 
 app.use(express.static(path.join(__dirname, 'public')));
 
 const MIN_PLAYERS = 3;
 const MAX_TOKENS = 5;          // столько жетонов смерти — и игрок выбывает
-const ROUND_TIME = 20000;      // время на выбор стрелочника
+const ROUND_TIME = 30000;      // время на уговоры и выбор стрелочника
+const SABOTAGE_TIME = 10000;   // время на выбор после карты «Саботаж»
+const REVEAL_BASE = 2200;      // раскрытие карт: база + шаг на каждую карту
+const REVEAL_STEP = 450;
 const TROLLEY_TIME = 4200;     // сколько едет трамвай до следующего раунда
 const ELIMINATION_PAUSE = 1800; // дополнительная пауза, если кто-то выбыл
 const START_DELAY = 1500;      // пауза перед первым раундом
@@ -24,6 +28,8 @@ let currentRound = null;
 let roundNumber = 0;
 let nextRoundTimeout = null;
 let choiceTimeout = null;
+let drawPile = [];
+let discardPile = [];
 
 const findPlayer = (id) => players.find(p => p.id === id);
 const activePlayers = () => players.filter(p => p.status === 'active');
@@ -51,12 +57,22 @@ function clearTimers() {
 }
 
 function roundPayload() {
+    const now = Date.now();
     return {
         ...currentRound,
         players: publicPlayers(),
         maxTokens: MAX_TOKENS,
-        timeLeft: Math.max(0, currentRound.deadline - Date.now())
+        revealLeft: Math.max(0, currentRound.revealEnd - now),
+        timeLeft: Math.max(0, currentRound.deadline - now)
     };
+}
+
+function drawCard() {
+    if (!drawPile.length) {
+        drawPile = shuffle(discardPile.length ? discardPile : buildDeck());
+        discardPile = [];
+    }
+    return drawPile.pop();
 }
 
 io.on('connection', (socket) => {
@@ -87,6 +103,8 @@ io.on('connection', (socket) => {
         if (gameStarted || !findPlayer(socket.id) || players.length < MIN_PLAYERS) return;
         console.log('Игра запущена');
         players.forEach(p => { p.tokens = 0; p.status = 'active'; });
+        drawPile = shuffle(buildDeck());
+        discardPile = [];
         gameStarted = true;
         currentConductorIndex = -1;
         roundNumber = 0;
@@ -99,6 +117,7 @@ io.on('connection', (socket) => {
         const track = data && data.track;
         if (!currentRound || isTrolleyMoving) return;
         if (socket.id !== currentRound.conductorId) return;
+        if (Date.now() < currentRound.revealEnd) return;
         if (track !== 'A' && track !== 'B') return;
         launchTrolley(track, false);
     });
@@ -150,10 +169,12 @@ function launchTrolley(track, auto) {
 
     const victims = track === 'A' ? currentRound.trackA : currentRound.trackB;
     const eliminated = [];
+    // Жетон получает каждый игрок проигравшей стороны (кроме тех, кто в бронежилете)
     victims.forEach(id => {
         const p = findPlayer(id);
         if (!p || p.status !== 'active') return;
-        p.tokens++;
+        if (currentRound.immune.includes(id)) return;
+        p.tokens = Math.min(MAX_TOKENS, p.tokens + currentRound.multiplier);
         if (p.tokens >= MAX_TOKENS) {
             p.status = 'out';
             eliminated.push(id);
@@ -165,6 +186,8 @@ function launchTrolley(track, auto) {
         track,
         auto,
         victims,
+        immune: currentRound.immune,
+        multiplier: currentRound.multiplier,
         eliminated,
         players: publicPlayers(),
         maxTokens: MAX_TOKENS
@@ -220,24 +243,72 @@ function startNewRound() {
     const conductorId = players[conductorIdx].id;
 
     // Остальных активных раскладываем по двум путям поочерёдно
-    const trackA = [];
-    const trackB = [];
+    const tracks = { A: [], B: [] };
     let n = 0;
     for (let k = 1; k < N; k++) {
         const p = players[(conductorIdx + k) % N];
         if (p.status !== 'active') continue;
-        (n % 2 === 0 ? trackA : trackB).push(p.id);
+        tracks[n % 2 === 0 ? 'A' : 'B'].push(p.id);
         n++;
     }
 
+    // Прошлые карты уходят в сброс
+    if (currentRound) discardPile.push(...currentRound.cardsA, ...currentRound.cardsB, ...currentRound.actionCards);
+
+    // Каждый игрок на путях тянет одну карту и раскрывает её
+    const other = (t) => (t === 'A' ? 'B' : 'A');
+    const cards = { A: [], B: [] };
+    const actionCards = [];
+    const draws = [];
+    const immune = [];
+    let multiplier = 1;
+    let roundTime = ROUND_TIME;
+    [...tracks.A.map(id => [id, 'A']), ...tracks.B.map(id => [id, 'B'])]
+        .sort(() => Math.random() - 0.5)
+        .forEach(([id]) => {
+            const own = tracks.A.includes(id) ? 'A' : 'B';
+            const card = drawCard();
+            const draw = { playerId: id, card, track: own };
+            if (card.type === 'innocent') {
+                cards[own].push(card);
+                draw.to = own;
+            } else if (card.type === 'villain') {
+                cards[other(own)].push(card);
+                draw.to = other(own);
+            } else {
+                actionCards.push(card);
+                const p = findPlayer(id);
+                if (card.action === 'shield') immune.push(id);
+                if (card.action === 'defector') {
+                    tracks[own] = tracks[own].filter(x => x !== id);
+                    tracks[other(own)].push(id);
+                    draw.to = other(own);
+                }
+                if (card.action === 'medkit') p.tokens = Math.max(0, p.tokens - 1);
+                if (card.action === 'sabotage') roundTime = SABOTAGE_TIME;
+                if (card.action === 'double') multiplier = 2;
+            }
+            draws.push(draw);
+        });
+
+    const now = Date.now();
+    const revealMs = REVEAL_BASE + draws.length * REVEAL_STEP;
     roundNumber++;
     isTrolleyMoving = false;
     currentRound = {
         round: roundNumber,
         conductorId,
-        trackA,
-        trackB,
-        deadline: Date.now() + ROUND_TIME
+        trackA: tracks.A,
+        trackB: tracks.B,
+        cardsA: cards.A,
+        cardsB: cards.B,
+        actionCards,
+        draws,
+        immune,
+        multiplier,
+        roundTime,
+        revealEnd: now + revealMs,
+        deadline: now + revealMs + roundTime
     };
 
     io.to('players').emit('newRound', roundPayload());
@@ -247,11 +318,12 @@ function startNewRound() {
         if (currentRound && !isTrolleyMoving) {
             launchTrolley(Math.random() < 0.5 ? 'A' : 'B', true);
         }
-    }, ROUND_TIME);
+    }, currentRound.deadline - now);
 
     console.log(`=== РАУНД ${roundNumber} ===`);
     console.log(`Стрелочник: ${players[conductorIdx].name}`);
-    console.log(`Путь А: ${trackA.length} чел. | Путь Б: ${trackB.length} чел.`);
+    console.log(`Путь А: ${tracks.A.length} чел. | Путь Б: ${tracks.B.length} чел.`);
+    draws.forEach(d => console.log(`  ${findPlayer(d.playerId).name}: ${d.card.title}`));
 }
 
 const PORT = process.env.PORT || 3000;
