@@ -450,8 +450,9 @@
             </form>
             <ul class="steps">
                 <li><span class="step-num">1</span><span>Соберите <b>минимум 3 игрока</b> и включите камеру.</span></li>
-                <li><span class="step-num">2</span><span>Каждый раунд один игрок — <b>стрелочник</b>. У него 20 секунд, чтобы пустить трамвай по пути A или B.</span></li>
-                <li><span class="step-num skull"><svg><use href="#i-skull" /></svg></span><span>Кого сбил трамвай, получает <b>жетон смерти</b>. Пять жетонов — и вы <b>выбываете</b>.</span></li>
+                <li><span class="step-num">2</span><span>Каждый раунд один игрок — <b>стрелочник</b>, остальные лежат на путях A и B и тянут по <b>карте</b>: невинного на свой путь, негодяя — на чужой, или действие.</span></li>
+                <li><span class="step-num">3</span><span>30 секунд на <b>уговоры</b> — и стрелочник пускает трамвай.</span></li>
+                <li><span class="step-num skull"><svg><use href="#i-skull" /></svg></span><span>Каждый игрок проигравшей стороны получает <b>жетон смерти</b>. Пять жетонов — и вы <b>выбываете</b>.</span></li>
             </ul>
         </div>
     </section>
@@ -473,7 +474,7 @@
                     <div class="camera-status" id="camera-status"><span class="dot"></span><span id="camera-status-text">Запрашиваем камеру…</span></div>
                     <div class="rule-box">
                         <span class="pips" id="rule-pips"></span>
-                        <span>5 жетонов смерти — и вы выбываете. Побеждает тот, кого трамвай пощадил чаще всех.</span>
+                        <span>Каждый игрок на пути, по которому поехал трамвай, получает жетон. 5 жетонов — и вы выбываете.</span>
                     </div>
                 </div>
                 <div class="card players-card">
@@ -694,6 +695,34 @@
                     if (!ready()) return;
                     [55, 82.5, 110, 151, 207, 274].forEach((f, i) => tone(f, { dur: 3.2 - i * 0.3, vol: 0.32 / (i * 0.6 + 1), attack: 0.01 }));
                     noise({ dur: 1.4, vol: 0.12, type: 'lowpass', freq: 500 });
+                },
+                // Переворот карты: шорох
+                flip() {
+                    if (!ready()) return;
+                    noise({ dur: 0.14, vol: 0.18, type: 'bandpass', freq: 900, freqEnd: 3200, q: 1.5 });
+                },
+                // Удар по карте персонажа — потише, чем по игроку
+                thud() {
+                    if (!ready()) return;
+                    tone(150, { dur: 0.25, vol: 0.35, freqEnd: 50 });
+                    noise({ dur: 0.25, vol: 0.25, type: 'lowpass', freq: 2500, freqEnd: 300 });
+                },
+                action(kind) {
+                    if (!ready()) return;
+                    if (kind === 'shield') {
+                        tone(880, { type: 'square', dur: 0.25, vol: 0.06 });
+                        tone(1320, { dur: 0.5, vol: 0.12 });
+                        noise({ dur: 0.12, vol: 0.12, type: 'highpass', freq: 4000 });
+                    } else if (kind === 'defector') {
+                        tone(300, { type: 'triangle', dur: 0.3, vol: 0.15, freqEnd: 900 });
+                    } else if (kind === 'medkit') {
+                        [523, 659, 880].forEach((f, i) => tone(f, { type: 'triangle', start: i * 0.08, dur: 0.3, vol: 0.12 }));
+                    } else if (kind === 'sabotage') {
+                        for (let i = 0; i < 6; i++) tone(1800, { type: 'square', start: i * 0.07, dur: 0.03, vol: 0.06 });
+                    } else if (kind === 'double') {
+                        tone(98, { type: 'sawtooth', dur: 0.9, vol: 0.12 });
+                        tone(104, { type: 'sawtooth', dur: 0.9, vol: 0.1 });
+                    }
                 },
                 gameOver(won) {
                     if (!ready()) return;
@@ -928,8 +957,16 @@
         const TROLLEY_RAIL_OFFSET = 12;   // колёса стоят на нижнем рельсе
         const TROLLEY_FRONT = 88;         // от центра трамвая до носа
         const RAIL_GAUGE = 12;
-        const VICTIM_START_X = 640, VICTIM_END_X = 1200;
+        const VICTIM_START_X = 590, VICTIM_END_X = 1255;
         const BOX_W = 160, BOX_H = 120;
+        const CARD_W = 110, CARD_H = 150;
+        const DECK_POS = { x: 560, y: 380 };
+        const REVEAL_START = 700, REVEAL_STEP = 450;
+        const CARD_STYLE = {
+            innocent: { body: 0xf3ead7, border: 0x3ddc97, band: '#3ddc97', bandText: '#07080d', label: 'НЕВИННЫЙ', title: '#1a1a22', text: '#4a4652' },
+            villain: { body: 0x2a0f16, border: 0xff2e4d, band: '#ff2e4d', bandText: '#ffffff', label: 'НЕГОДЯЙ', title: '#ffffff', text: '#f3c9cf' },
+            action: { body: 0x1d1530, border: 0xb388ff, band: '#b388ff', bandText: '#07080d', label: 'ДЕЙСТВИЕ', title: '#ffffff', text: '#d9ccff' }
+        };
         const FONT = 'Inter, system-ui, sans-serif';
         const DISPLAY_FONT = 'Unbounded, ' + FONT;
 
@@ -991,6 +1028,10 @@
                 this.buildLever();
                 this.buildBoard();
                 this.createTrolley();
+                this.buildDeckPile();
+                this.cardObjs = [];
+                this.trackCards = { A: [], B: [] };
+                this.revealTimers = [];
 
                 gameScene = this;
                 pendingCalls.splice(0).forEach(([m, a]) => this[m](...a));
@@ -1119,7 +1160,7 @@
                 ['A', 'B'].forEach(t => this.drawTrack(g, this.paths[t], rnd));
 
                 // Фонарные столбы (основания)
-                this.lampSpots = [{ x: 520, y: 380 }, { x: 1010, y: 380 }, { x: 770, y: 672 }, { x: 1180, y: 105 }, { x: 40, y: 290 }];
+                this.lampSpots = [{ x: 860, y: 380 }, { x: 770, y: 672 }, { x: 1180, y: 105 }, { x: 40, y: 290 }];
                 this.lampSpots.forEach(l => {
                     g.fillStyle(0x000000, 0.5).fillEllipse(l.x + 4, l.y + 6, 26, 12);
                     g.fillStyle(0x2a2f3f, 1).fillCircle(l.x, l.y, 9);
@@ -1450,6 +1491,7 @@
             }
 
             clearRound() {
+                this.clearCards();
                 this.clearMarkers();
                 this.boxes.forEach(b => b.destroy());
                 this.boxes.clear();
@@ -1459,19 +1501,169 @@
                 this.updateBoard();
             }
 
+            // ---------- Карты ----------
+            buildDeckPile() {
+                const { x, y } = DECK_POS;
+                for (let i = 2; i >= 0; i--) {
+                    const back = this.createCardObj(null);
+                    back.setPosition(x + i * 3, y - i * 3).setScale(0.6).setDepth(8 - i * 0.1);
+                }
+                this.add.text(x, y + 56, 'КОЛОДА', {
+                    fontFamily: FONT, fontSize: '11px', fontStyle: '700', color: '#8e8a96'
+                }).setOrigin(0.5).setDepth(8);
+            }
+
+            // Карта: лицо или рубашка (card === null)
+            createCardObj(card) {
+                const c = this.add.container(0, 0).setDepth(9);
+                const g = this.add.graphics();
+                g.fillStyle(0x000000, 0.45).fillRoundedRect(-CARD_W / 2 + 3, -CARD_H / 2 + 5, CARD_W, CARD_H, 10);
+                const face = this.add.container(0, 0);
+                const back = this.add.container(0, 0);
+
+                const bg = this.add.graphics();
+                bg.fillStyle(0x12131c, 1).fillRoundedRect(-CARD_W / 2, -CARD_H / 2, CARD_W, CARD_H, 10);
+                bg.lineStyle(2, 0x3a3f55, 1).strokeRoundedRect(-CARD_W / 2 + 5, -CARD_H / 2 + 5, CARD_W - 10, CARD_H - 10, 7);
+                bg.fillStyle(0xff2e4d, 0.22);
+                for (let x = -CARD_W / 2 + 12; x <= CARD_W / 2 - 12; x += 8) {
+                    for (let y = -CARD_H / 2 + 12; y <= CARD_H / 2 - 12; y += 8) bg.fillCircle(x, y, 1.2);
+                }
+                back.add([bg, this.add.image(0, 0, 'skull').setScale(1.3).setTint(0xff2e4d)]);
+
+                if (card) {
+                    const st = CARD_STYLE[card.type];
+                    const fg = this.add.graphics();
+                    fg.fillStyle(st.body, 1).fillRoundedRect(-CARD_W / 2, -CARD_H / 2, CARD_W, CARD_H, 10);
+                    fg.lineStyle(3, st.border, 1).strokeRoundedRect(-CARD_W / 2 + 1.5, -CARD_H / 2 + 1.5, CARD_W - 3, CARD_H - 3, 9);
+                    const band = this.add.text(0, -CARD_H / 2 + 12, st.label, {
+                        fontFamily: FONT, fontSize: '9px', fontStyle: '800', color: st.bandText,
+                        backgroundColor: st.band, padding: { x: 6, y: 2 }
+                    }).setOrigin(0.5);
+                    const emoji = this.add.text(0, -26, card.emoji, { fontSize: '38px' }).setOrigin(0.5);
+                    const title = this.add.text(0, 12, card.title, {
+                        fontFamily: FONT, fontSize: '12px', fontStyle: '700', color: st.title,
+                        align: 'center', wordWrap: { width: CARD_W - 14 }
+                    }).setOrigin(0.5, 0);
+                    const text = this.add.text(0, 14 + title.height + 3, card.text, {
+                        fontFamily: FONT, fontSize: '9.5px', color: st.text,
+                        align: 'center', wordWrap: { width: CARD_W - 14 }
+                    }).setOrigin(0.5, 0);
+                    face.add([fg, band, emoji, title, text]);
+                }
+
+                c.add([g, back, face]);
+                face.setVisible(false);
+                Object.assign(c, { card, face, back, baseScale: 1, home: null });
+                return c;
+            }
+
+            flipCard(c) {
+                Sound.flip();
+                this.tweens.add({
+                    targets: c, scaleX: 0, duration: 120, ease: 'Quad.easeIn',
+                    onComplete: () => {
+                        c.back.setVisible(false);
+                        c.face.setVisible(true);
+                        this.tweens.add({ targets: c, scaleX: c.scaleY, duration: 140, ease: 'Quad.easeOut' });
+                    }
+                });
+            }
+
+            // Наведение — карта увеличивается, чтобы прочитать текст
+            makeReadable(c) {
+                c.setSize(CARD_W, CARD_H).setInteractive({ useHandCursor: true });
+                c.on('pointerover', () => {
+                    if (!c.home || c.hit) return;
+                    this.tweens.killTweensOf(c);
+                    c.setDepth(40);
+                    this.tweens.add({
+                        targets: c, scale: 2,
+                        x: Phaser.Math.Clamp(c.home.x, CARD_W + 10, W - CARD_W - 10),
+                        y: Phaser.Math.Clamp(c.home.y, CARD_H + 10, H - CARD_H - 10),
+                        duration: 150, ease: 'Quad.easeOut'
+                    });
+                });
+                c.on('pointerout', () => {
+                    if (!c.home || c.hit) return;
+                    this.tweens.killTweensOf(c);
+                    this.tweens.add({
+                        targets: c, scale: c.home.s, x: c.home.x, y: c.home.y, duration: 150,
+                        onComplete: () => c.setDepth(9)
+                    });
+                });
+            }
+
+            clearCards() {
+                this.revealTimers.forEach(t => t.remove(false));
+                this.revealTimers = [];
+                this.cardObjs.forEach(c => {
+                    if (c.hit) return;
+                    this.tweens.killTweensOf(c);
+                    this.tweens.add({ targets: c, alpha: 0, scale: c.scale * 0.6, duration: 250, onComplete: () => c.destroy() });
+                });
+                this.cardObjs = [];
+                this.trackCards = { A: [], B: [] };
+            }
+
+            // Раскладка пути: сначала игроки, потом карты персонажей
+            layoutTrack(ids, cards, y) {
+                const gap = 18;
+                const items = [
+                    ...ids.map(id => ({ kind: 'player', id, w: BOX_W })),
+                    ...cards.map(card => ({ kind: 'card', card, w: CARD_W }))
+                ];
+                if (!items.length) return [];
+                const total = items.reduce((a, it) => a + it.w, 0) + gap * (items.length - 1);
+                const s = Phaser.Math.Clamp((VICTIM_END_X - VICTIM_START_X) / total, 0.5, 1);
+                let x = VICTIM_START_X;
+                return items.map(it => {
+                    const cx = x + (it.w * s) / 2;
+                    x += (it.w + gap) * s;
+                    return { ...it, x: cx, y, s };
+                });
+            }
+
+            floatText(x, y, text, color) {
+                const t = this.add.text(x, y, text, {
+                    fontFamily: DISPLAY_FONT, fontSize: '22px', fontStyle: '800', color,
+                    stroke: '#07080d', strokeThickness: 6
+                }).setOrigin(0.5).setDepth(31).setScale(0.3);
+                this.tweens.add({ targets: t, scale: 1, duration: 220, ease: 'Back.out' });
+                this.tweens.add({ targets: t, y: y - 40, alpha: 0, delay: 1100, duration: 500, onComplete: () => t.destroy() });
+            }
+
+            applyAction(draw, box) {
+                const a = draw.card.action;
+                Sound.action(a);
+                if (!box) return;
+                const top = box.y - (BOX_H / 2) * box.scale;
+                if (a === 'shield') {
+                    const badge = this.add.text(BOX_W / 2 - 4, -BOX_H / 2 + 4, '🛡️', { fontSize: '30px' }).setOrigin(0.5);
+                    box.add(badge);
+                    box.badge = badge;
+                    badge.setScale(2.5);
+                    this.tweens.add({ targets: badge, scale: 1, duration: 300, ease: 'Back.out' });
+                    this.floatText(box.x, top - 10, 'Бронежилет', '#9ad8ff');
+                }
+                if (a === 'defector') this.floatText(box.x, top - 10, `→ путь ${draw.to}`, '#b388ff');
+                if (a === 'medkit') { this.floatText(box.x, top - 10, '−1 жетон', '#3ddc97'); this.renderPips(box); }
+                if (a === 'sabotage') this.floatText(CONDUCTOR_POS.x, CONDUCTOR_POS.y - 80, 'Только 10 секунд!', '#ffb020');
+                if (a === 'double') this.floatText(box.x, top - 10, '×2 жетона', '#ff2e4d');
+            }
+
             // ---------- Раунд ----------
             applyRound(data) {
                 const placements = new Map();
                 placements.set(data.conductorId, { x: CONDUCTOR_POS.x, y: CONDUCTOR_POS.y, s: 1, role: 'conductor' });
 
+                const slots = new Map(); // id карты -> позиция на пути
                 ['A', 'B'].forEach(t => {
                     const ids = t === 'A' ? data.trackA : data.trackB;
-                    const n = ids.length;
-                    const span = VICTIM_END_X - VICTIM_START_X;
-                    const step = n > 1 ? Math.min(190, span / (n - 1)) : 0;
-                    const s = Math.min(1, (step || 190) / 190);
-                    const x0 = n > 1 ? VICTIM_START_X : VICTIM_START_X + 60;
-                    ids.forEach((id, i) => placements.set(id, { x: x0 + i * step, y: TRACK_Y[t], s: Math.max(0.55, s), role: t }));
+                    const cards = t === 'A' ? data.cardsA : data.cardsB;
+                    this.layoutTrack(ids, cards, TRACK_Y[t]).forEach(it => {
+                        if (it.kind === 'player') placements.set(it.id, { x: it.x, y: it.y, s: it.s, role: t });
+                        else slots.set(it.card.id, { x: it.x, y: it.y, s: it.s, track: t });
+                    });
                 });
 
                 [...this.boxes.keys()].forEach(id => {
@@ -1479,11 +1671,13 @@
                 });
 
                 this.clearMarkers();
+                this.clearCards();
 
                 placements.forEach((pos, id) => {
                     const box = this.boxes.get(id) || this.createBox(id);
                     box.isDead = false;
                     box.setVisible(true);
+                    if (box.badge) { box.badge.destroy(); box.badge = null; }
                     this.tweens.killTweensOf(box);
                     box.setAngle(0);
                     this.styleBox(box, pos.role);
@@ -1492,6 +1686,59 @@
                         targets: box, x: pos.x, y: pos.y, scale: pos.s, alpha: 1, angle: 0,
                         duration: 900, ease: 'Cubic.easeInOut'
                     });
+                });
+
+                // Раскрытие карт: с колоды — к игроку — переворот — на путь
+                const animate = data.revealLeft > 800;
+                data.draws.forEach((draw, i) => {
+                    const c = this.createCardObj(draw.card);
+                    this.cardObjs.push(c);
+                    const slot = slots.get(draw.card.id);
+                    const pos = placements.get(draw.playerId);
+                    const box = this.boxes.get(draw.playerId);
+
+                    const settle = () => {
+                        if (slot) {
+                            c.home = slot;
+                            this.trackCards[slot.track].push(c);
+                            this.makeReadable(c);
+                            this.tweens.add({ targets: c, x: slot.x, y: slot.y, scale: slot.s, duration: 420, ease: 'Cubic.easeInOut' });
+                        } else {
+                            this.tweens.add({ targets: c, alpha: 0, scale: 0.3, y: c.y - 30, duration: 350, onComplete: () => c.destroy() });
+                        }
+                    };
+
+                    if (!animate) {
+                        c.back.setVisible(false);
+                        c.face.setVisible(true);
+                        if (slot) {
+                            c.setPosition(slot.x, slot.y).setScale(slot.s);
+                            c.home = slot;
+                            this.trackCards[slot.track].push(c);
+                            this.makeReadable(c);
+                        } else {
+                            c.destroy();
+                            if (draw.card.action === 'shield' && box) this.applyAction(draw, box);
+                        }
+                        return;
+                    }
+
+                    c.setPosition(DECK_POS.x, DECK_POS.y).setScale(0.6).setAlpha(0);
+                    const above = { x: pos ? pos.x : DECK_POS.x, y: pos ? pos.y - 40 : DECK_POS.y };
+                    this.revealTimers.push(this.time.delayedCall(REVEAL_START + i * REVEAL_STEP, () => {
+                        c.setAlpha(1).setDepth(32);
+                        this.tweens.add({
+                            targets: c, x: above.x, y: above.y, scale: 0.95, duration: 320, ease: 'Cubic.easeOut',
+                            onComplete: () => {
+                                this.flipCard(c);
+                                this.revealTimers.push(this.time.delayedCall(850, () => {
+                                    c.setDepth(9);
+                                    if (draw.card.type === 'action') this.applyAction(draw, box);
+                                    settle();
+                                }));
+                            }
+                        });
+                    }));
                 });
 
                 this.previewTrack(null);
@@ -1525,7 +1772,7 @@
                 });
             }
 
-            launch(track, victims, eliminated) {
+            launch(track, victims, eliminated, immune) {
                 this.previewTrack(track);
                 this.setLever(track);
                 Sound.lever();
@@ -1536,6 +1783,8 @@
                 const len = path.getLength();
                 const startT = (this.trolley.x + 200) / len;
                 const victimSet = new Set(victims);
+                const immuneSet = new Set(immune || []);
+                const cardsOnTrack = this.trackCards[track];
                 this.pendingElims = new Set(eliminated || []);
                 const prev = new Phaser.Math.Vector2();
                 const cur = new Phaser.Math.Vector2();
@@ -1559,11 +1808,56 @@
                         const front = cur.x + TROLLEY_FRONT;
                         this.boxes.forEach(box => {
                             if (box.isDead || !victimSet.has(box.playerId)) return;
-                            if (front > box.x - (BOX_W / 2) * box.scale) this.killBox(box);
+                            if (front > box.x - (BOX_W / 2) * box.scale) {
+                                if (immuneSet.has(box.playerId)) this.spareBox(box);
+                                else this.killBox(box);
+                            }
+                        });
+                        cardsOnTrack.forEach(c => {
+                            if (c.hit || !c.home) return;
+                            if (front > c.home.x - (CARD_W / 2) * c.home.s) this.hitCard(c);
                         });
                     },
                     onComplete: () => this.sparks.stop()
                 });
+            }
+
+            // Бронежилет: трамвай подбрасывает игрока, но жетона нет
+            spareBox(box) {
+                box.isDead = true;
+                Sound.action('shield');
+                const y0 = box.y;
+                this.tweens.add({ targets: box, y: y0 - 110, angle: 360, duration: 380, ease: 'Quad.easeOut' });
+                this.tweens.add({ targets: box, y: y0, delay: 380, duration: 420, ease: 'Bounce.easeOut' });
+                this.floatText(box.x, y0 - 120, 'СПАСЁН!', '#9ad8ff');
+                const ring = this.add.circle(box.x, y0, 50).setStrokeStyle(5, 0x9ad8ff, 1).setDepth(26);
+                this.tweens.add({ targets: ring, scale: 3, alpha: 0, duration: 450, onComplete: () => ring.destroy() });
+            }
+
+            // Персонаж с карты: карту отбрасывает трамваем
+            hitCard(c) {
+                c.hit = true;
+                c.disableInteractive();
+                this.tweens.killTweensOf(c);
+                c.setDepth(25);
+                Sound.thud();
+                const burst = this.add.particles(c.x - 30 * c.scale, c.y, 'spark', {
+                    speed: { min: 150, max: 450 }, angle: { min: -80, max: 60 }, gravityY: 900,
+                    lifespan: { min: 250, max: 550 }, scale: { start: 0.9, end: 0 },
+                    tint: [0xffffff, 0xffd166, 0xff2e4d], blendMode: 'ADD', emitting: false
+                }).setDepth(27);
+                burst.explode(18);
+                this.time.delayedCall(800, () => burst.destroy());
+                this.cameras.main.shake(120, 0.005);
+                this.debris.push({
+                    obj: c,
+                    vx: Phaser.Math.Between(350, 650),
+                    vy: Phaser.Math.Between(-750, -450),
+                    vr: Phaser.Math.FloatBetween(-10, 10),
+                    life: 0,
+                    ttl: 1400
+                });
+                this.cardObjs = this.cardObjs.filter(x => x !== c);
             }
 
             killBox(box) {
@@ -1764,7 +2058,7 @@
 
         function updateTimer() {
             const timer = $('timer');
-            if (!state.round || state.launched) {
+            if (!state.round || state.launched || Date.now() < state.revealEnd) {
                 timer.classList.add('hidden');
                 lastTick = -1;
             } else {
@@ -1821,7 +2115,9 @@
             state.maxTokens = data.maxTokens;
             state.round = data;
             state.launched = false;
+            state.revealEnd = Date.now() + data.revealLeft;
             state.timerEnd = Date.now() + data.timeLeft;
+            state.timerTotal = data.roundTime;
 
             const myId = socket.id;
             const mine = me();
@@ -1830,15 +2126,32 @@
             const conductorName = esc(nameById(data.conductorId));
 
             $('round-pill').textContent = `Раунд ${data.round}`;
-            $('choice-a-count').textContent = `${data.trackA.length} ${plural(data.trackA.length, 'игрок', 'игрока', 'игроков')}`;
-            $('choice-b-count').textContent = `${data.trackB.length} ${plural(data.trackB.length, 'игрок', 'игрока', 'игроков')}`;
-            choiceButtons.forEach(b => b.disabled = false);
+            const countText = (ids, cards) => {
+                const parts = [`${ids.length} ${plural(ids.length, 'игрок', 'игрока', 'игроков')}`];
+                if (cards.length) parts.push(`${cards.length} ${plural(cards.length, 'персонаж', 'персонажа', 'персонажей')}`);
+                return parts.join(' · ');
+            };
+            $('choice-a-count').textContent = countText(data.trackA, data.cardsA);
+            $('choice-b-count').textContent = countText(data.trackB, data.cardsB);
+            // Выбирать можно только после раскрытия карт
+            choiceButtons.forEach(b => b.disabled = true);
+            clearTimeout(state.revealTimer);
+            state.revealTimer = setTimeout(() => {
+                if (state.round === data && !state.launched) choiceButtons.forEach(b => b.disabled = false);
+            }, data.revealLeft);
             $('choice-panel').classList.toggle('show', amConductor);
 
+            const myDraw = data.draws.find(d => d.playerId === myId);
+            const myCard = myDraw ? `Ваша карта: ${esc(myDraw.card.emoji)} <b>${esc(myDraw.card.title)}</b>` : '';
+            const extras = [];
+            if (data.multiplier > 1) extras.push('☠️ Двойная ставка');
+            if (data.roundTime < 20000) extras.push('⏱️ Саботаж');
+            const extraText = extras.length ? ` · ${extras.join(' · ')}` : '';
+
             if (amConductor) {
-                setBanner('Вы — стрелочник', 'Выберите путь A или B, пока не вышло время', 'conductor');
+                setBanner('Вы — стрелочник', `Игроки раскрывают карты. Выслушайте уговоры и выберите путь${extraText}`, 'conductor');
             } else if (myTrack) {
-                setBanner(`Вы лежите на пути ${myTrack}`, `${conductorName} решает… ${myTokensHTML()}`);
+                setBanner(`Вы лежите на пути ${myTrack}`, `${myCard} · Уговорите ${conductorName}! ${myTokensHTML()}`);
             } else if (mine && mine.status === 'out') {
                 setBanner('Вы выбыли', 'Смотрите, кто продержится дольше', 'out');
             } else {
@@ -1862,8 +2175,11 @@
             state.players = data.players;
             const iAmHit = data.victims.includes(myId);
             const iAmOut = data.eliminated.includes(myId);
+            const iAmSafe = (data.immune || []).includes(myId);
 
-            if (iAmHit) {
+            if (iAmHit && iAmSafe) {
+                setBanner('Бронежилет спас вас!', `${auto}Путь ${data.track} — жетон не получен ${myTokensHTML()}`, 'conductor');
+            } else if (iAmHit) {
                 setBanner(iAmOut ? 'Вы выбываете!' : 'Трамвай едет на вас!', `${auto}Путь ${data.track} ${myTokensHTML()}`, 'dead');
             } else if (state.round.conductorId === myId) {
                 setBanner(`Вы выбрали путь ${data.track}`, `${auto}${count} ${plural(count, 'жертва', 'жертвы', 'жертв')}`, 'conductor');
@@ -1872,10 +2188,10 @@
             }
 
             if (gameScene) {
-                gameScene.launch(data.track, data.victims, data.eliminated);
+                gameScene.launch(data.track, data.victims, data.eliminated, data.immune);
                 gameScene.time.delayedCall(1700, () => gameScene.updateBoard());
             } else {
-                callScene('launch', data.track, data.victims, data.eliminated);
+                callScene('launch', data.track, data.victims, data.eliminated, data.immune);
             }
 
             if (data.eliminated.length) {
