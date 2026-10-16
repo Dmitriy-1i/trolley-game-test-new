@@ -554,6 +554,8 @@
         const TRACK_COLOR = { A: 0x3ddc97, B: 0xffb020 };
         const CONDUCTOR_POS = { x: 170, y: 160 };
         const TROLLEY_IDLE_X = 120;
+        const TROLLEY_RAIL_OFFSET = 10;   // колёса стоят на нижнем рельсе
+        const TROLLEY_FRONT = 88;         // от центра трамвая до носа
         const VICTIM_START_X = 640, VICTIM_END_X = 1200;
         const BOX_W = 160, BOX_H = 120;
         const FONT = 'Inter, system-ui, sans-serif';
@@ -587,7 +589,8 @@
             constructor() { super('GameScene'); }
 
             preload() {
-                this.load.image('trolley', 'assets/trolley.png');
+                this.load.svg('trolley-body', 'assets/trolley.svg', { width: 360, height: 170 });
+                this.load.svg('trolley-wheel', 'assets/wheel.svg', { width: 44, height: 44 });
             }
 
             create() {
@@ -598,13 +601,64 @@
                 this.drawBackground();
                 this.buildTracks();
 
-                this.trolley = this.add.image(TROLLEY_IDLE_X, MAIN_Y + 4, 'trolley')
-                    .setScale(0.085)
-                    .setOrigin(0.5, 0.88)
-                    .setDepth(20);
+                this.debris = [];            // осколки после столкновения
+                this.markers = [];           // метки погибших на путях
+                this.makeTextures();
+                this.createTrolley();
 
                 gameScene = this;
                 pendingCalls.splice(0).forEach(([m, a]) => this[m](...a));
+            }
+
+            // Мелкие текстуры для частиц
+            makeTextures() {
+                const g = this.make.graphics({ x: 0, y: 0, add: false });
+                g.fillStyle(0xffffff, 1).fillCircle(4, 4, 4);
+                g.generateTexture('spark', 8, 8);
+                g.clear().fillStyle(0xffffff, 1).fillRect(0, 0, 10, 6);
+                g.generateTexture('chip', 10, 6);
+                g.destroy();
+            }
+
+            // Трамвай: кузов, колёса, фара и искры из-под колёс
+            createTrolley() {
+                const t = this.add.container(TROLLEY_IDLE_X, MAIN_Y + TROLLEY_RAIL_OFFSET).setDepth(20).setScale(0.5);
+
+                const beam = this.add.graphics().setBlendMode(Phaser.BlendModes.ADD).setAlpha(0);
+                beam.fillStyle(0xfff1c2, 0.35);
+                beam.fillTriangle(158, -44, 640, -150, 640, 70);
+                beam.fillStyle(0xfff1c2, 0.25);
+                beam.fillTriangle(158, -44, 460, -100, 460, 30);
+
+                const body = this.add.image(-180, -170, 'trolley-body').setOrigin(0, 0);
+                const wheels = [-85, 75].map(x => this.add.image(x, -22, 'trolley-wheel'));
+                t.add([beam, body, ...wheels]);
+
+                this.trolley = t;
+                this.trolleyBeam = beam;
+                this.trolleyWheels = wheels;
+                this.trolleyLastX = t.x;
+
+                this.sparks = this.add.particles(0, 0, 'spark', {
+                    speed: { min: 60, max: 220 },
+                    angle: { min: 190, max: 250 },
+                    gravityY: 500,
+                    lifespan: 380,
+                    scale: { start: 0.7, end: 0 },
+                    tint: [0xffd166, 0xff7a45, 0xffffff],
+                    blendMode: 'ADD',
+                    frequency: 25,
+                    quantity: 2,
+                    emitting: false
+                }).setDepth(21);
+                this.sparks.startFollow(t, -40, -2);
+            }
+
+            // Вращаем колёса пропорционально пройденному пути
+            spinWheels() {
+                const dx = this.trolley.x - this.trolleyLastX;
+                this.trolleyLastX = this.trolley.x;
+                this.trolleyWheels.forEach(w => w.rotation += dx / 11);
             }
 
             drawBackground() {
@@ -767,7 +821,13 @@
                 }
             }
 
+            clearMarkers() {
+                this.markers.forEach(m => m.destroy());
+                this.markers = [];
+            }
+
             clearRound() {
+                this.clearMarkers();
                 this.boxes.forEach(b => b.destroy());
                 this.boxes.clear();
                 this.previewTrack(null);
@@ -794,9 +854,12 @@
                     if (!placements.has(id)) this.removePlayer(id);
                 });
 
+                this.clearMarkers();
+
                 placements.forEach((pos, id) => {
                     const box = this.boxes.get(id) || this.createBox(id);
                     box.isDead = false;
+                    box.setVisible(true);
                     this.tweens.killTweensOf(box);
                     box.setAngle(0);
                     this.styleBox(box, pos.role);
@@ -822,10 +885,17 @@
             resetTrolley(animate) {
                 this.tweens.killTweensOf(this.trolley);
                 if (this.trolleyTween) { this.trolleyTween.stop(); this.trolleyTween = null; }
-                this.trolley.setRotation(0).setY(MAIN_Y + 4);
-                if (!animate) { this.trolley.setX(TROLLEY_IDLE_X); return; }
+                this.sparks.stop();
+                this.tweens.killTweensOf(this.trolleyBeam);
+                this.trolleyBeam.setAlpha(0);
+                this.trolley.setRotation(0).setY(MAIN_Y + TROLLEY_RAIL_OFFSET);
+                if (!animate) { this.trolley.setX(TROLLEY_IDLE_X); this.trolleyLastX = TROLLEY_IDLE_X; return; }
                 this.trolley.setX(-200);
-                this.tweens.add({ targets: this.trolley, x: TROLLEY_IDLE_X, duration: 900, ease: 'Back.out' });
+                this.trolleyLastX = -200;
+                this.tweens.add({
+                    targets: this.trolley, x: TROLLEY_IDLE_X, duration: 900, ease: 'Back.out',
+                    onUpdate: () => this.spinWheels()
+                });
             }
 
             launch(track, victims) {
@@ -841,6 +911,8 @@
                 const prev = new Phaser.Math.Vector2();
                 const cur = new Phaser.Math.Vector2();
                 const progress = { t: startT };
+                this.sparks.start();
+                this.tweens.add({ targets: this.trolleyBeam, alpha: 0.7, duration: 300 });
 
                 this.trolleyTween = this.tweens.add({
                     targets: progress,
@@ -850,35 +922,187 @@
                     onUpdate: () => {
                         path.getPoint(Math.min(1, progress.t), cur);
                         path.getPoint(Math.max(0, progress.t - 0.004), prev);
-                        this.trolley.setPosition(cur.x, cur.y + 4);
+                        // Лёгкая тряска на ходу
+                        const bump = Math.sin(this.time.now / 45) * 1.2;
+                        this.trolley.setPosition(cur.x, cur.y + TROLLEY_RAIL_OFFSET + bump);
                         this.trolley.setRotation(Math.atan2(cur.y - prev.y, cur.x - prev.x) * 0.6);
+                        this.spinWheels();
 
+                        const front = cur.x + TROLLEY_FRONT;
                         this.boxes.forEach(box => {
                             if (box.isDead || !victimSet.has(box.playerId)) return;
-                            if (cur.x > box.x - 70) this.killBox(box);
+                            if (front > box.x - (BOX_W / 2) * box.scale) this.killBox(box);
                         });
-                    }
+                    },
+                    onComplete: () => this.sparks.stop()
                 });
             }
 
             killBox(box) {
                 box.isDead = true;
-                this.cameras.main.shake(160, 0.008);
-                const flash = this.add.rectangle(0, 0, BOX_W, BOX_H, 0xff4d5e, 0.6);
-                box.add(flash);
-                this.tweens.add({
-                    targets: box,
-                    alpha: 0,
-                    scale: box.scale * 0.5,
-                    angle: Phaser.Math.Between(-60, 60),
-                    y: box.y - 140,
-                    x: box.x + 60,
-                    duration: 600,
-                    ease: 'Cubic.easeOut',
-                    onComplete: () => flash.destroy()
-                });
-                if (box.playerId === socket.id) {
-                    this.cameras.main.flash(250, 255, 60, 80);
+                this.tweens.killTweensOf(box);
+                const s = box.scale;
+                const cx = box.x, cy = box.y;
+                const color = box.playerId === socket.id ? 0xffffff : (state.round && state.round.trackA.includes(box.playerId) ? TRACK_COLOR.A : TRACK_COLOR.B);
+                const isMe = box.playerId === socket.id;
+
+                // 1. Стоп-кадр: трамвай на мгновение «вязнет» в ударе
+                if (this.trolleyTween) {
+                    this.trolleyTween.timeScale = 0.08;
+                    this.time.delayedCall(110, () => { if (this.trolleyTween) this.trolleyTween.timeScale = 1; });
+                }
+
+                // 2. Вспышка и ударная волна
+                const flash = this.add.circle(cx - 60 * s, cy, 70 * s, 0xffffff, 0.9).setDepth(26).setBlendMode(Phaser.BlendModes.ADD);
+                this.tweens.add({ targets: flash, scale: 2.2, alpha: 0, duration: 260, ease: 'Quad.easeOut', onComplete: () => flash.destroy() });
+                const ring = this.add.circle(cx - 60 * s, cy, 40 * s).setStrokeStyle(6, 0xff4d5e, 1).setDepth(26);
+                this.tweens.add({ targets: ring, scale: 4, alpha: 0, duration: 500, ease: 'Cubic.easeOut', onComplete: () => ring.destroy() });
+
+                // 3. Рамка с камерой разлетается на осколки
+                this.shatter(box, color);
+                box.setVisible(false);
+
+                // 4. Искры и щепки
+                const burst = this.add.particles(cx - 50 * s, cy, 'spark', {
+                    speed: { min: 200, max: 650 },
+                    angle: { min: -80, max: 60 },
+                    gravityY: 900,
+                    lifespan: { min: 300, max: 700 },
+                    scale: { start: 1.1, end: 0 },
+                    tint: [0xffffff, 0xffd166, 0xff4d5e],
+                    blendMode: 'ADD',
+                    emitting: false
+                }).setDepth(27);
+                burst.explode(36);
+                const chips = this.add.particles(cx, cy, 'chip', {
+                    speed: { min: 150, max: 500 },
+                    angle: { min: -110, max: 40 },
+                    rotate: { min: 0, max: 360 },
+                    gravityY: 1300,
+                    lifespan: 1100,
+                    alpha: { start: 1, end: 0 },
+                    tint: [color, 0x1b2036, 0xff4d5e],
+                    emitting: false
+                }).setDepth(24);
+                chips.explode(22);
+                this.time.delayedCall(1300, () => { burst.destroy(); chips.destroy(); });
+
+                // 5. Звукоподражание
+                const word = Phaser.Utils.Array.GetRandom(['БАХ!', 'ХРЯСЬ!', 'БУМ!', 'ШМЯК!']);
+                const pow = this.add.text(cx + 10, cy - 70 * s, word, {
+                    fontFamily: 'Unbounded, ' + FONT, fontSize: '40px', fontStyle: '800',
+                    color: '#ffd166', stroke: '#0b0d17', strokeThickness: 8
+                }).setOrigin(0.5).setDepth(30).setScale(0.2).setAngle(Phaser.Math.Between(-14, 14));
+                this.tweens.add({ targets: pow, scale: 1, duration: 220, ease: 'Back.out' });
+                this.tweens.add({ targets: pow, alpha: 0, y: pow.y - 30, delay: 650, duration: 350, onComplete: () => pow.destroy() });
+
+                // 6. Метка на месте гибели до конца раунда
+                const name = this.nameOf(box.playerId);
+                const marker = this.add.text(cx, cy, `✕  ${name}`, {
+                    fontFamily: FONT, fontSize: '15px', fontStyle: '700', color: '#ff8a96',
+                    backgroundColor: 'rgba(11,13,23,0.85)', padding: { x: 10, y: 5 }
+                }).setOrigin(0.5).setDepth(8).setAlpha(0);
+                this.tweens.add({ targets: marker, alpha: 1, delay: 500, duration: 400 });
+                this.markers.push(marker);
+
+                // 7. Камера
+                this.cameras.main.shake(isMe ? 380 : 220, isMe ? 0.018 : 0.01);
+                if (isMe) {
+                    this.cameras.main.flash(300, 255, 60, 80);
+                    this.cameras.main.zoomTo(1.06, 120, 'Quad.easeOut', true);
+                    this.time.delayedCall(140, () => this.cameras.main.zoomTo(1, 400, 'Quad.easeInOut', true));
+                }
+            }
+
+            // Снимок текущего кадра камеры режем на куски и бросаем вперёд
+            shatter(box, color) {
+                const s = box.scale;
+                const id = box.playerId;
+                const key = `snap_${id}_${Date.now()}`;
+                const snap = this.textures.createCanvas(key, CAM_W, CAM_H);
+                const ctx = snap.context;
+                ctx.fillStyle = '#1b2036';
+                ctx.fillRect(0, 0, CAM_W, CAM_H);
+                ctx.fillStyle = `hsl(${hueFor(id)}, 80%, 70%)`;
+                ctx.font = '700 34px Inter, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(initials(this.nameOf(id).replace(' (вы)', '')), CAM_W / 2, CAM_H / 2 - 4);
+                const camKey = `cam_${id}`;
+                if (this.textures.exists(camKey)) ctx.drawImage(this.textures.get(camKey).getSourceImage(), 0, 0);
+                // Тонкие «трещины» по снимку
+                ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+                ctx.lineWidth = 1.5;
+                for (let i = 0; i < 5; i++) {
+                    ctx.beginPath();
+                    ctx.moveTo(CAM_W * 0.3, CAM_H * 0.5);
+                    ctx.lineTo(Math.random() * CAM_W, i % 2 ? 0 : CAM_H);
+                    ctx.stroke();
+                }
+                snap.refresh();
+
+                const cols = 4, rows = 3;
+                const cw = CAM_W / cols, ch = CAM_H / rows;
+                const scaleX = BOX_W / CAM_W, scaleY = BOX_H / CAM_H;
+                for (let r = 0; r < rows; r++) {
+                    for (let c = 0; c < cols; c++) {
+                        const ox = (c + 0.5) * cw, oy = (r + 0.5) * ch;
+                        const piece = this.add.image(
+                            box.x + (ox * scaleX - BOX_W / 2) * s,
+                            box.y + (oy * scaleY - BOX_H / 2) * s,
+                            key
+                        ).setCrop(c * cw, r * ch, cw, ch)
+                            .setOrigin(ox / CAM_W, oy / CAM_H)
+                            .setScale(scaleX * s, scaleY * s)
+                            .setDepth(25);
+                        this.debris.push({
+                            obj: piece,
+                            vx: Phaser.Math.Between(250, 700) + c * 60,
+                            vy: Phaser.Math.Between(-650, -250) + r * 90,
+                            vr: Phaser.Math.FloatBetween(-9, 9),
+                            life: 0,
+                            ttl: Phaser.Math.Between(1100, 1500)
+                        });
+                    }
+                }
+
+                // Куски цветной рамки
+                for (let i = 0; i < 8; i++) {
+                    const bar = this.add.rectangle(
+                        box.x + Phaser.Math.Between(-80, 80) * s,
+                        box.y + (i % 2 ? -63 : 63) * s,
+                        Phaser.Math.Between(20, 50) * s, 8 * s, color
+                    ).setDepth(25);
+                    this.debris.push({
+                        obj: bar,
+                        vx: Phaser.Math.Between(150, 600),
+                        vy: Phaser.Math.Between(-700, -200),
+                        vr: Phaser.Math.FloatBetween(-12, 12),
+                        life: 0,
+                        ttl: 1200
+                    });
+                }
+
+                this.time.delayedCall(1700, () => { if (this.textures.exists(key)) this.textures.remove(key); });
+            }
+
+            // Простая физика осколков
+            update(time, delta) {
+                const dt = delta / 1000;
+                for (let i = this.debris.length - 1; i >= 0; i--) {
+                    const d = this.debris[i];
+                    d.life += delta;
+                    d.vy += 1600 * dt;
+                    d.vx *= 0.99;
+                    d.obj.x += d.vx * dt;
+                    d.obj.y += d.vy * dt;
+                    d.obj.rotation += d.vr * dt;
+                    const fade = d.ttl - d.life;
+                    if (fade < 400) d.obj.setAlpha(Math.max(0, fade / 400));
+                    if (d.life >= d.ttl) {
+                        d.obj.destroy();
+                        this.debris.splice(i, 1);
+                    }
                 }
             }
         }

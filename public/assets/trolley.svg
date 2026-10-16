@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="170" viewBox="0 0 360 170">
+  <defs>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ff5a80"/>
+      <stop offset="1" stop-color="#c8244c"/>
+    </linearGradient>
+    <linearGradient id="roof" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3a4060"/>
+      <stop offset="1" stop-color="#22263a"/>
+    </linearGradient>
+    <linearGradient id="win" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff1c2"/>
+      <stop offset="1" stop-color="#ffc857"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#c9f1ff"/>
+      <stop offset="1" stop-color="#6cc9ee"/>
+    </linearGradient>
+    <linearGradient id="stripe" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffd166"/>
+      <stop offset="1" stop-color="#ff7a45"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Токоприёмник -->
+  <path d="M128 40 L214 8" stroke="#22263a" stroke-width="6" stroke-linecap="round"/>
+  <path d="M206 6 L230 12" stroke="#22263a" stroke-width="5" stroke-linecap="round"/>
+  <rect x="112" y="34" width="34" height="10" rx="3" fill="#22263a"/>
+
+  <!-- Крыша -->
+  <rect x="34" y="38" width="282" height="18" rx="9" fill="url(#roof)"/>
+  <rect x="150" y="30" width="70" height="12" rx="5" fill="#2c3149"/>
+
+  <!-- Кузов, нос справа -->
+  <path d="M30 52 H296 Q336 52 344 96 L348 126 Q349 138 337 138 H30 Q16 138 16 124 V66 Q16 52 30 52 Z" fill="url(#body)"/>
+  <path d="M30 52 H296 Q318 52 330 70 H16 V66 Q16 52 30 52 Z" fill="#ffffff" opacity="0.12"/>
+
+  <!-- Окна салона (подсвечены изнутри) -->
+  <rect x="32" y="66" width="40" height="36" rx="7" fill="url(#win)"/>
+  <rect x="82" y="66" width="40" height="36" rx="7" fill="url(#win)"/>
+  <rect x="132" y="66" width="40" height="36" rx="7" fill="url(#win)"/>
+  <rect x="182" y="66" width="40" height="36" rx="7" fill="url(#win)"/>
+  <!-- Силуэты пассажиров -->
+  <circle cx="52" cy="84" r="7" fill="#c98a2e" opacity="0.55"/>
+  <path d="M41 102 Q52 90 63 102 Z" fill="#c98a2e" opacity="0.55"/>
+  <circle cx="152" cy="84" r="7" fill="#c98a2e" opacity="0.55"/>
+  <path d="M141 102 Q152 90 163 102 Z" fill="#c98a2e" opacity="0.55"/>
+
+  <!-- Дверь -->
+  <rect x="232" y="62" width="32" height="70" rx="5" fill="#9e1d3d"/>
+  <rect x="237" y="68" width="22" height="30" rx="4" fill="url(#win)" opacity="0.9"/>
+  <line x1="248" y1="62" x2="248" y2="132" stroke="#7d1630" stroke-width="2"/>
+
+  <!-- Лобовое стекло и кабина -->
+  <path d="M274 66 H298 Q324 66 332 100 H274 Z" fill="url(#glass)"/>
+  <path d="M282 70 L292 70 L282 92 Z" fill="#ffffff" opacity="0.55"/>
+
+  <!-- Полоса и номер маршрута -->
+  <rect x="16" y="110" width="332" height="9" fill="url(#stripe)"/>
+  <rect x="96" y="122" width="44" height="12" rx="3" fill="#22263a"/>
+  <text x="118" y="132" text-anchor="middle" font-family="Arial, sans-serif" font-weight="700" font-size="11" fill="#ffd166">13</text>
+
+  <!-- Фара и габарит -->
+  <circle cx="338" cy="126" r="7" fill="#fff6d6"/>
+  <circle cx="338" cy="126" r="3" fill="#ffffff"/>
+  <rect x="17" y="122" width="7" height="9" rx="2" fill="#ff2a3d"/>
+
+  <!-- Рама и тележки -->
+  <rect x="34" y="136" width="284" height="12" rx="4" fill="#1b1f33"/>
+  <rect x="58" y="142" width="74" height="12" rx="5" fill="#2c3149"/>
+  <rect x="218" y="142" width="74" height="12" rx="5" fill="#2c3149"/>
+
+  <!-- Метельник -->
+  <path d="M322 140 H344 L356 164 H330 Z" fill="#2c3149"/>
+  <path d="M332 146 L342 162 M340 146 L350 162" stroke="#1b1f33" stroke-width="3"/>
+</svg>
