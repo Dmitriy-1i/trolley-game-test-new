@@ -116,6 +116,8 @@ function startNewRound() {
     console.log(`Путь А: ${trackA.length} чел. | Путь Б: ${trackB.length} чел.`);
 }
 
-http.listen(3000, () => {
-    console.log('Сервер запущен на http://localhost:3000');
+const PORT = process.env.PORT || 3000;
+
+http.listen(PORT, () => {
+    console.log(`Сервер запущен на порту ${PORT}`);
 });
