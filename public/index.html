@@ -12,15 +12,16 @@
     <script src="/socket.io/socket.io.js"></script>
     <style>
         :root {
-            --bg: #0b0d17;
-            --bg-2: #141829;
-            --surface: rgba(255, 255, 255, 0.05);
-            --surface-2: rgba(255, 255, 255, 0.09);
-            --border: rgba(255, 255, 255, 0.1);
-            --text: #f1f3fa;
-            --muted: #9097b0;
-            --accent: #ff3d6e;
-            --accent-2: #ff7a45;
+            --bg: #07080d;
+            --bg-2: #10121c;
+            --surface: rgba(255, 255, 255, 0.045);
+            --surface-2: rgba(255, 255, 255, 0.085);
+            --border: rgba(255, 255, 255, 0.09);
+            --text: #f2efe9;
+            --muted: #8e8a96;
+            --blood: #ff2e4d;
+            --blood-2: #ff6b3d;
+            --sodium: #ffb547;
             --track-a: #3ddc97;
             --track-b: #ffb020;
             --gold: #ffd166;
@@ -43,10 +44,21 @@
 
         body {
             background:
-                radial-gradient(1000px 600px at 15% -10%, rgba(255, 61, 110, 0.18), transparent 60%),
-                radial-gradient(900px 600px at 110% 110%, rgba(61, 220, 151, 0.12), transparent 60%),
+                radial-gradient(900px 520px at 85% -10%, rgba(255, 181, 71, 0.13), transparent 60%),
+                radial-gradient(900px 600px at 0% 110%, rgba(255, 46, 77, 0.14), transparent 60%),
                 var(--bg);
             overflow: hidden;
+        }
+
+        /* Шум поверх фона — «плёночная» текстура */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: -50%;
+            pointer-events: none;
+            opacity: .05;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+            z-index: 0;
         }
 
         button, input { font: inherit; color: inherit; }
@@ -56,18 +68,19 @@
             inset: 0;
             display: none;
             overflow-y: auto;
-            padding: 24px 16px;
+            padding: 24px 16px 110px;
+            z-index: 1;
         }
         .screen.active { display: flex; animation: fadeIn .35s ease; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
         .card {
-            background: var(--surface);
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.025));
             border: 1px solid var(--border);
             border-radius: var(--radius);
             backdrop-filter: blur(14px);
             -webkit-backdrop-filter: blur(14px);
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
         }
 
         .btn {
@@ -87,60 +100,101 @@
         .btn:disabled { opacity: .4; cursor: not-allowed; }
         .btn:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
         .btn-primary {
-            background: linear-gradient(135deg, var(--accent), var(--accent-2));
+            background: linear-gradient(135deg, var(--blood), var(--blood-2));
             color: #fff;
-            box-shadow: 0 10px 30px rgba(255, 61, 110, 0.35);
+            box-shadow: 0 12px 34px rgba(255, 46, 77, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25);
         }
         .btn-primary:hover:not(:disabled) { filter: brightness(1.08); }
         .btn-ghost { background: var(--surface-2); border: 1px solid var(--border); }
         .btn-ghost:hover { background: rgba(255, 255, 255, 0.14); }
         .btn-sm { padding: 9px 14px; font-size: 14px; border-radius: 12px; }
 
+        .icon { width: 1em; height: 1em; fill: currentColor; flex: none; }
+
+        /* Жетоны смерти */
+        .pips { display: inline-flex; gap: 3px; }
+        .pip { width: 16px; height: 16px; fill: rgba(255, 255, 255, 0.14); transition: fill .3s, transform .3s; }
+        .pip.on { fill: var(--blood); filter: drop-shadow(0 0 4px rgba(255, 46, 77, 0.6)); }
+        .pip.pop { animation: pipPop .6s ease; }
+        @keyframes pipPop { 0% { transform: scale(2.2); } 60% { transform: scale(.85); } 100% { transform: scale(1); } }
+
+        /* ===== Декоративные рельсы с трамваем внизу экрана ===== */
+        .rails-deco {
+            position: fixed; left: 0; right: 0; bottom: 0; height: 74px;
+            pointer-events: none; z-index: 0; overflow: hidden;
+            display: none;
+        }
+        body.deco .rails-deco { display: block; }
+        .rails-deco::before {
+            content: '';
+            position: absolute; left: 0; right: 0; bottom: 14px; height: 22px;
+            background:
+                linear-gradient(#5a6070, #5a6070) 0 4px / 100% 3px no-repeat,
+                linear-gradient(#5a6070, #5a6070) 0 15px / 100% 3px no-repeat,
+                repeating-linear-gradient(90deg, #3a2d24 0 10px, transparent 10px 26px);
+            opacity: .7;
+        }
+        .rails-deco img {
+            position: absolute; bottom: 22px; width: 150px;
+            animation: tramBy 14s linear infinite;
+            filter: drop-shadow(0 0 20px rgba(255, 181, 71, .25));
+        }
+        @keyframes tramBy { 0% { left: -170px; } 55%, 100% { left: calc(100% + 40px); } }
+
         /* ===== Главное меню ===== */
         #screen-menu { align-items: center; justify-content: center; }
-        .hero { width: 100%; max-width: 520px; padding: 36px 32px; margin: auto; }
+        .hero { width: 100%; max-width: 540px; padding: 34px 32px; margin: auto; position: relative; overflow: hidden; }
+        .hero::after {
+            content: '';
+            position: absolute; top: -80px; right: -80px; width: 260px; height: 260px;
+            background: radial-gradient(circle, rgba(255, 181, 71, 0.18), transparent 70%);
+            pointer-events: none;
+        }
+        .logo-row { display: flex; align-items: center; gap: 12px; }
+        .logo {
+            width: 46px; height: 46px; border-radius: 14px;
+            display: grid; place-items: center;
+            background: linear-gradient(135deg, var(--blood), var(--blood-2));
+            box-shadow: 0 10px 30px rgba(255, 46, 77, 0.4);
+        }
+        .logo svg { width: 26px; height: 26px; fill: #fff; }
         .badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 13px;
-            font-weight: 500;
-            color: var(--muted);
-            background: var(--surface-2);
-            border: 1px solid var(--border);
-            padding: 6px 12px;
-            border-radius: 999px;
+            display: inline-flex; align-items: center; gap: 8px;
+            font-size: 13px; font-weight: 500; color: var(--muted);
+            background: var(--surface-2); border: 1px solid var(--border);
+            padding: 6px 12px; border-radius: 999px;
         }
         .badge .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--track-a); box-shadow: 0 0 10px var(--track-a); }
         h1 {
             font-family: var(--font-display);
             font-weight: 800;
-            font-size: clamp(36px, 8vw, 56px);
-            line-height: 1.02;
-            letter-spacing: -0.02em;
-            margin: 20px 0 14px;
+            font-size: clamp(38px, 8.5vw, 60px);
+            line-height: .98;
+            letter-spacing: -0.03em;
+            margin: 22px 0 14px;
+            text-transform: uppercase;
         }
         h1 span {
-            background: linear-gradient(135deg, var(--accent), var(--accent-2));
+            background: linear-gradient(135deg, var(--blood), var(--blood-2));
             -webkit-background-clip: text;
             background-clip: text;
             color: transparent;
         }
-        .lead { color: var(--muted); font-size: 16px; line-height: 1.55; margin: 0 0 28px; }
+        .lead { color: var(--muted); font-size: 16px; line-height: 1.55; margin: 0 0 26px; }
         .field-label { display: block; font-size: 14px; font-weight: 500; color: var(--muted); margin-bottom: 8px; }
         .input {
             width: 100%;
             padding: 15px 16px;
             border-radius: 14px;
             border: 1px solid var(--border);
-            background: rgba(0, 0, 0, 0.25);
+            background: rgba(0, 0, 0, 0.35);
             font-size: 17px;
             outline: none;
             transition: border-color .15s, box-shadow .15s;
         }
-        .input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(255, 61, 110, 0.18); }
+        .input:focus { border-color: var(--blood); box-shadow: 0 0 0 4px rgba(255, 46, 77, 0.18); }
         #join-form .btn { width: 100%; margin-top: 14px; padding: 16px; font-size: 17px; }
-        .steps { list-style: none; padding: 0; margin: 28px 0 0; display: grid; gap: 12px; }
+        .steps { list-style: none; padding: 0; margin: 26px 0 0; display: grid; gap: 12px; }
         .steps li { display: flex; gap: 12px; align-items: flex-start; color: var(--muted); font-size: 14px; line-height: 1.45; }
         .steps b { color: var(--text); font-weight: 600; }
         .step-num {
@@ -152,17 +206,20 @@
             background: var(--surface-2);
             color: var(--text);
         }
+        .step-num.skull { background: rgba(255, 46, 77, 0.16); }
+        .step-num.skull svg { width: 15px; height: 15px; fill: var(--blood); }
 
         /* ===== Лобби ===== */
         #screen-lobby { justify-content: center; }
         .lobby { width: 100%; max-width: 980px; margin: auto; }
         .lobby-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
-        .lobby-header h2 { font-family: var(--font-display); font-size: 28px; margin: 0; }
+        .lobby-header h2 { font-family: var(--font-display); font-size: 28px; margin: 0; text-transform: uppercase; letter-spacing: -0.02em; }
         .pill {
             display: inline-flex; align-items: center; gap: 8px;
             padding: 7px 14px; border-radius: 999px;
             background: var(--surface-2); border: 1px solid var(--border);
             font-size: 14px; font-weight: 500;
+            backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
         }
         .pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--track-b); }
         .pill.ready .dot { background: var(--track-a); box-shadow: 0 0 10px var(--track-a); }
@@ -175,7 +232,7 @@
             aspect-ratio: 4 / 3;
             border-radius: 14px;
             overflow: hidden;
-            background: #06070d;
+            background: #05060a;
             display: grid; place-items: center;
         }
         .camera-frame video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
@@ -184,34 +241,40 @@
         .camera-status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
         .camera-status.on .dot { background: var(--track-a); box-shadow: 0 0 8px var(--track-a); }
         .camera-status.off .dot { background: var(--danger); }
+        .rule-box {
+            display: flex; gap: 12px; align-items: center;
+            padding: 12px 14px; border-radius: 12px;
+            background: rgba(255, 46, 77, 0.08); border: 1px solid rgba(255, 46, 77, 0.2);
+            font-size: 14px; color: #f3c9cf; line-height: 1.4;
+        }
 
         .players-card { padding: 22px; display: flex; flex-direction: column; }
         .players-card h3 { margin: 0 0 14px; font-size: 18px; display: flex; justify-content: space-between; align-items: baseline; }
         .players-card h3 small { color: var(--muted); font-weight: 500; font-size: 14px; }
-        #player-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; max-height: 300px; overflow-y: auto; }
-        #player-list li {
+        .player-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; max-height: 300px; overflow-y: auto; }
+        .player-list li {
             display: flex; align-items: center; gap: 12px;
             padding: 10px 12px; border-radius: 12px;
-            background: rgba(0, 0, 0, 0.2);
+            background: rgba(0, 0, 0, 0.25);
             animation: fadeIn .25s ease;
         }
         .avatar {
             width: 36px; height: 36px; border-radius: 10px;
             display: grid; place-items: center;
-            font-weight: 700; font-size: 15px; color: #0b0d17;
+            font-weight: 700; font-size: 15px; color: #07080d;
             flex: none;
         }
         .tag { margin-left: auto; font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 6px; background: var(--surface-2); color: var(--muted); }
-        .tag.me { background: rgba(255, 61, 110, 0.18); color: #ff9db5; }
+        .tag.me { background: rgba(255, 46, 77, 0.18); color: #ff9dab; }
         .slot-empty { border: 1px dashed var(--border); background: transparent !important; color: var(--muted); font-size: 14px; }
         .slot-empty .avatar { background: var(--surface); color: var(--muted); }
         .progress { height: 6px; background: var(--surface-2); border-radius: 99px; overflow: hidden; margin: 18px 0 10px; }
-        .progress > div { height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .4s ease; }
+        .progress > div { height: 100%; width: 0; background: linear-gradient(90deg, var(--blood), var(--blood-2)); transition: width .4s ease; }
         #lobby-hint { color: var(--muted); font-size: 14px; margin: 0 0 16px; min-height: 20px; }
         #start-btn { width: 100%; padding: 16px; font-size: 17px; margin-top: auto; }
 
         /* ===== Игра ===== */
-        #screen-game { padding: 0; }
+        #screen-game { padding: 0; background: #07080d; }
         #game-container { position: absolute; inset: 0; }
         #game-container canvas { display: block; }
         .hud { position: absolute; left: 0; right: 0; pointer-events: none; display: flex; padding: 14px 16px; gap: 12px; }
@@ -219,6 +282,7 @@
         .hud-top { top: 0; align-items: flex-start; justify-content: space-between; }
         .hud-bottom { bottom: 0; justify-content: center; padding-bottom: max(18px, env(safe-area-inset-bottom)); }
         .round-pill { font-family: var(--font-display); font-size: 13px; letter-spacing: .04em; }
+        .hud-right { display: flex; gap: 8px; }
 
         .banner {
             min-width: min(440px, 60vw);
@@ -226,7 +290,7 @@
             padding: 12px 18px 14px;
             text-align: center;
             border-radius: 16px;
-            background: rgba(11, 13, 23, 0.72);
+            background: rgba(7, 8, 13, 0.78);
             border: 1px solid var(--border);
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
@@ -234,27 +298,31 @@
         }
         .banner.conductor { border-color: rgba(255, 209, 102, 0.6); box-shadow: 0 0 40px rgba(255, 209, 102, 0.18); }
         .banner.dead { border-color: rgba(255, 77, 94, 0.7); box-shadow: 0 0 40px rgba(255, 77, 94, 0.25); }
+        .banner.out { border-color: rgba(255, 255, 255, 0.2); filter: grayscale(1); }
         #role-title { font-family: var(--font-display); font-size: clamp(15px, 2.4vw, 20px); font-weight: 600; }
-        #role-sub { color: var(--muted); font-size: 14px; margin-top: 4px; }
+        #role-sub { color: var(--muted); font-size: 14px; margin-top: 4px; display: flex; gap: 8px; justify-content: center; align-items: center; flex-wrap: wrap; }
+        #role-sub .pips .pip { width: 14px; height: 14px; }
         .timer { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
         .timer-bar { flex: 1; height: 6px; background: var(--surface-2); border-radius: 99px; overflow: hidden; }
         .timer-bar > div { height: 100%; width: 100%; background: var(--track-a); border-radius: 99px; }
         .timer.urgent .timer-bar > div { background: var(--danger); }
+        .timer.urgent #timer-text { color: var(--danger); }
         #timer-text { font-variant-numeric: tabular-nums; font-weight: 600; font-size: 14px; width: 30px; text-align: right; }
         .timer.hidden { visibility: hidden; }
 
         #choice-panel { display: none; gap: 14px; }
         #choice-panel.show { display: flex; animation: fadeIn .3s ease; }
         .choice-btn {
+            position: relative;
             min-width: 200px;
             padding: 14px 22px;
             border-radius: 16px;
             border: 2px solid transparent;
-            color: #0b0d17;
+            color: #07080d;
             font-weight: 700;
             flex-direction: column;
             gap: 2px;
-            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.35);
         }
         .choice-btn .big { font-family: var(--font-display); font-size: 20px; }
         .choice-btn .small { font-size: 13px; font-weight: 600; opacity: .75; }
@@ -264,7 +332,6 @@
             padding: 2px 6px; border-radius: 5px;
             background: rgba(0, 0, 0, 0.18);
         }
-        .choice-btn { position: relative; }
         .choice-a { background: var(--track-a); }
         .choice-b { background: var(--track-b); }
         .choice-btn:hover:not(:disabled) { filter: brightness(1.1); transform: translateY(-2px); }
@@ -276,11 +343,53 @@
             .banner { order: 3; width: 100%; min-width: 0; }
         }
 
+        /* Крупные объявления (выбывание) */
+        #announce {
+            position: fixed; inset: 0; z-index: 40;
+            display: none; place-items: center; text-align: center;
+            pointer-events: none;
+            background: radial-gradient(circle at center, rgba(120, 0, 20, 0.55), rgba(0, 0, 0, 0.75) 70%);
+        }
+        #announce.show { display: grid; animation: announceIn 2.6s ease forwards; }
+        #announce .big {
+            font-family: var(--font-display); font-weight: 800; text-transform: uppercase;
+            font-size: clamp(30px, 7vw, 72px); letter-spacing: -0.02em; line-height: 1;
+            color: #fff; text-shadow: 0 0 40px rgba(255, 46, 77, 0.8);
+        }
+        #announce .small { margin-top: 14px; font-size: 18px; color: #f3c9cf; display: flex; gap: 10px; justify-content: center; align-items: center; }
+        #announce .skull-big { width: 84px; height: 84px; fill: var(--blood); margin: 0 auto 18px; display: block; filter: drop-shadow(0 0 24px rgba(255, 46, 77, .8)); }
+        @keyframes announceIn {
+            0% { opacity: 0; transform: scale(1.3); }
+            12% { opacity: 1; transform: scale(1); }
+            80% { opacity: 1; }
+            100% { opacity: 0; }
+        }
+
+        /* ===== Итоги ===== */
+        #screen-results { align-items: center; justify-content: center; }
+        .results { width: 100%; max-width: 560px; padding: 30px; margin: auto; text-align: center; }
+        .results h2 { font-family: var(--font-display); text-transform: uppercase; font-size: clamp(26px, 6vw, 40px); margin: 6px 0 6px; letter-spacing: -0.02em; }
+        .results .reason { color: var(--muted); margin: 0 0 22px; }
+        .winner {
+            padding: 18px; border-radius: 16px; margin-bottom: 18px;
+            background: linear-gradient(135deg, rgba(255, 209, 102, 0.18), rgba(255, 107, 61, 0.1));
+            border: 1px solid rgba(255, 209, 102, 0.45);
+        }
+        .winner .label { font-size: 13px; color: var(--gold); text-transform: uppercase; letter-spacing: .1em; font-weight: 700; }
+        .winner .names { font-family: var(--font-display); font-size: 26px; margin-top: 6px; }
+        .standings { list-style: none; padding: 0; margin: 0 0 22px; display: grid; gap: 8px; text-align: left; }
+        .standings li { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; background: rgba(0, 0, 0, 0.25); }
+        .standings .place { width: 22px; font-weight: 700; color: var(--muted); text-align: center; }
+        .standings .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .standings li.out .nm { color: var(--muted); text-decoration: line-through; }
+        .standings li.win { background: rgba(255, 209, 102, 0.1); }
+        #results-btn { width: 100%; padding: 16px; font-size: 17px; }
+
         /* ===== Уведомления ===== */
         #toasts { position: fixed; left: 50%; bottom: 110px; transform: translateX(-50%); display: grid; gap: 8px; z-index: 50; pointer-events: none; width: max-content; max-width: calc(100vw - 32px); }
         .toast {
             padding: 12px 18px; border-radius: 14px;
-            background: rgba(20, 24, 41, 0.92); border: 1px solid var(--border);
+            background: rgba(16, 18, 28, 0.94); border: 1px solid var(--border);
             font-size: 15px; font-weight: 500; text-align: center;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
             animation: toastIn .3s ease;
@@ -296,27 +405,53 @@
             padding: 8px 16px; border-radius: 999px;
         }
         .conn-lost.show { display: block; }
+
+        #mute-btn {
+            position: fixed; right: 16px; bottom: max(16px, env(safe-area-inset-bottom)); z-index: 45;
+            width: 44px; height: 44px; padding: 0; border-radius: 14px;
+            font-size: 20px;
+            background: rgba(16, 18, 28, 0.8);
+            backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+        }
+        @media (max-width: 600px) { body.in-game #mute-btn { bottom: 96px; } }
     </style>
 </head>
 
-<body>
+<body class="deco">
+    <!-- Иконки -->
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+        <symbol id="i-skull" viewBox="0 0 32 32">
+            <path d="M16 2C8.8 2 3.5 7.2 3.5 14c0 3.9 1.8 7 4.5 8.9V27a2 2 0 0 0 2 2h2v-3h2v3h4v-3h2v3h2a2 2 0 0 0 2-2v-4.1c2.7-1.9 4.5-5 4.5-8.9C28.5 7.2 23.2 2 16 2Zm-5.5 16.5a3.3 3.3 0 1 1 0-6.6 3.3 3.3 0 0 1 0 6.6Zm11 0a3.3 3.3 0 1 1 0-6.6 3.3 3.3 0 0 1 0 6.6ZM16 23l-2-3.4h4L16 23Z" />
+        </symbol>
+        <symbol id="i-sound" viewBox="0 0 24 24">
+            <path d="M4 9v6h4l5 4V5L8 9H4Zm12.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4Zm-2.5-8.8v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6Z" />
+        </symbol>
+        <symbol id="i-mute" viewBox="0 0 24 24">
+            <path d="M4 9v6h4l5 4V5L8 9H4Zm16.6 3 2.2-2.2-1.4-1.4-2.2 2.2-2.2-2.2-1.4 1.4 2.2 2.2-2.2 2.2 1.4 1.4 2.2-2.2 2.2 2.2 1.4-1.4-2.2-2.2Z" />
+        </symbol>
+    </svg>
+
     <div class="conn-lost" id="conn-lost">Нет связи с сервером — переподключаемся…</div>
+    <div class="rails-deco"><img src="assets/trolley.svg" alt=""></div>
 
     <!-- ===== Главное меню ===== -->
     <section class="screen active" id="screen-menu">
         <div class="card hero">
-            <span class="badge"><span class="dot"></span>Мультиплеер · с веб-камерой</span>
+            <div class="logo-row">
+                <div class="logo"><svg><use href="#i-skull" /></svg></div>
+                <span class="badge"><span class="dot"></span>Мультиплеер · с веб-камерой</span>
+            </div>
             <h1>Трамвай<br><span>смерти</span></h1>
-            <p class="lead">Классическая проблема вагонетки, только решать её будут ваши друзья — в реальном времени и на камеру.</p>
+            <p class="lead">Проблема вагонетки, только решать её будут ваши друзья — в реальном времени и на камеру. Последний выживший забирает всё.</p>
             <form id="join-form" autocomplete="off">
                 <label class="field-label" for="name-input">Как вас зовут?</label>
                 <input class="input" id="name-input" maxlength="16" placeholder="Например, Дима" autocomplete="nickname" required>
                 <button class="btn btn-primary" type="submit">Войти в лобби →</button>
             </form>
             <ul class="steps">
-                <li><span class="step-num">1</span><span>Соберите <b>минимум 3 игрока</b> в лобби и включите камеру.</span></li>
-                <li><span class="step-num">2</span><span>Каждый раунд один игрок становится <b>стрелочником</b>, остальные лежат на путях A и B.</span></li>
-                <li><span class="step-num">3</span><span>У стрелочника <b>20 секунд</b> на выбор. Не успел — путь выберется случайно.</span></li>
+                <li><span class="step-num">1</span><span>Соберите <b>минимум 3 игрока</b> и включите камеру.</span></li>
+                <li><span class="step-num">2</span><span>Каждый раунд один игрок — <b>стрелочник</b>. У него 20 секунд, чтобы пустить трамвай по пути A или B.</span></li>
+                <li><span class="step-num skull"><svg><use href="#i-skull" /></svg></span><span>Кого сбил трамвай, получает <b>жетон смерти</b>. Пять жетонов — и вы <b>выбываете</b>.</span></li>
             </ul>
         </div>
     </section>
@@ -336,10 +471,14 @@
                         <div class="camera-placeholder" id="camera-placeholder">Разрешите доступ к камере, чтобы другие игроки вас видели</div>
                     </div>
                     <div class="camera-status" id="camera-status"><span class="dot"></span><span id="camera-status-text">Запрашиваем камеру…</span></div>
+                    <div class="rule-box">
+                        <span class="pips" id="rule-pips"></span>
+                        <span>5 жетонов смерти — и вы выбываете. Побеждает тот, кого трамвай пощадил чаще всех.</span>
+                    </div>
                 </div>
                 <div class="card players-card">
                     <h3>Игроки <small id="player-count">0</small></h3>
-                    <ul id="player-list"></ul>
+                    <ul class="player-list" id="player-list"></ul>
                     <div class="progress"><div id="lobby-progress"></div></div>
                     <p id="lobby-hint"></p>
                     <button class="btn btn-primary" id="start-btn" disabled>Начать игру</button>
@@ -361,7 +500,9 @@
                     <span id="timer-text">20</span>
                 </div>
             </div>
-            <button class="btn btn-ghost btn-sm" id="game-leave">Выйти</button>
+            <div class="hud-right">
+                <button class="btn btn-ghost btn-sm" id="game-leave">Выйти</button>
+            </div>
         </div>
         <div class="hud hud-bottom">
             <div id="choice-panel">
@@ -371,10 +512,197 @@
         </div>
     </section>
 
+    <!-- ===== Итоги ===== -->
+    <section class="screen" id="screen-results">
+        <div class="card results">
+            <span class="badge" id="results-badge">Игра окончена</span>
+            <h2>Конец маршрута</h2>
+            <p class="reason" id="results-reason"></p>
+            <div class="winner">
+                <div class="label" id="winner-label">Победитель</div>
+                <div class="names" id="winner-names"></div>
+            </div>
+            <ul class="standings" id="standings"></ul>
+            <button class="btn btn-primary" id="results-btn">Вернуться в лобби</button>
+        </div>
+    </section>
+
+    <div id="announce">
+        <div>
+            <svg class="skull-big"><use href="#i-skull" /></svg>
+            <div class="big" id="announce-big"></div>
+            <div class="small" id="announce-small"></div>
+        </div>
+    </div>
+
+    <button class="btn btn-ghost" id="mute-btn" aria-label="Звук"><svg class="icon"><use href="#i-sound" /></svg></button>
     <div id="toasts" aria-live="polite"></div>
 
     <script>
         const socket = io();
+
+        // ====================== ЗВУК (Web Audio, без файлов) ======================
+        const Sound = (() => {
+            let ctx = null, master = null, noiseBuf = null;
+            let muted = false;
+            try { muted = localStorage.getItem('trolley-muted') === '1'; } catch (e) { }
+
+            function init() {
+                if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
+                const AC = window.AudioContext || window.webkitAudioContext;
+                if (!AC) return;
+                ctx = new AC();
+                master = ctx.createGain();
+                master.gain.value = muted ? 0 : 0.8;
+                const comp = ctx.createDynamicsCompressor();
+                master.connect(comp);
+                comp.connect(ctx.destination);
+                noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+                const d = noiseBuf.getChannelData(0);
+                for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+            }
+
+            const ready = () => ctx && ctx.state === 'running' && !muted;
+
+            function tone(freq, o = {}) {
+                const { type = 'sine', start = 0, dur = 0.3, vol = 0.3, attack = 0.005, freqEnd } = o;
+                const t = ctx.currentTime + start;
+                const osc = ctx.createOscillator();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, t);
+                if (freqEnd) osc.frequency.exponentialRampToValueAtTime(freqEnd, t + dur);
+                const g = ctx.createGain();
+                g.gain.setValueAtTime(0.0001, t);
+                g.gain.exponentialRampToValueAtTime(vol, t + attack);
+                g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+                osc.connect(g);
+                g.connect(master);
+                osc.start(t);
+                osc.stop(t + dur + 0.05);
+            }
+
+            function noise(o = {}) {
+                const { start = 0, dur = 0.3, vol = 0.3, type = 'lowpass', freq = 1000, freqEnd, q = 1, attack = 0.003 } = o;
+                const t = ctx.currentTime + start;
+                const src = ctx.createBufferSource();
+                src.buffer = noiseBuf;
+                src.loop = true;
+                const f = ctx.createBiquadFilter();
+                f.type = type;
+                f.Q.value = q;
+                f.frequency.setValueAtTime(freq, t);
+                if (freqEnd) f.frequency.exponentialRampToValueAtTime(freqEnd, t + dur);
+                const g = ctx.createGain();
+                g.gain.setValueAtTime(0.0001, t);
+                g.gain.exponentialRampToValueAtTime(vol, t + attack);
+                g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+                src.connect(f);
+                f.connect(g);
+                g.connect(master);
+                src.start(t, Math.random());
+                src.stop(t + dur + 0.05);
+            }
+
+            const api = {
+                init,
+                isMuted: () => muted,
+                toggle() {
+                    muted = !muted;
+                    try { localStorage.setItem('trolley-muted', muted ? '1' : '0'); } catch (e) { }
+                    init();
+                    if (master) master.gain.setTargetAtTime(muted ? 0 : 0.8, ctx.currentTime, 0.05);
+                    return muted;
+                },
+                click() { if (ready()) tone(880, { type: 'triangle', dur: 0.07, vol: 0.12 }); },
+                join() {
+                    if (!ready()) return;
+                    tone(523, { type: 'triangle', dur: 0.18, vol: 0.14 });
+                    tone(784, { type: 'triangle', start: 0.09, dur: 0.25, vol: 0.14 });
+                },
+                // Трамвайный звонок «дзынь-дзынь»
+                bell() {
+                    if (!ready()) return;
+                    [0, 0.24].forEach(s => {
+                        tone(1318, { start: s, dur: 1.1, vol: 0.2 });
+                        tone(1975, { start: s, dur: 0.7, vol: 0.06 });
+                        tone(2637, { start: s, dur: 0.45, vol: 0.06 });
+                    });
+                },
+                roundStart() {
+                    if (!ready()) return;
+                    tone(392, { type: 'triangle', dur: 0.3, vol: 0.12 });
+                    tone(523, { type: 'triangle', start: 0.12, dur: 0.4, vol: 0.12 });
+                },
+                tick(urgent) {
+                    if (!ready()) return;
+                    tone(urgent ? 1600 : 1100, { type: 'square', dur: 0.045, vol: urgent ? 0.07 : 0.04 });
+                },
+                // Щелчок рычага стрелки
+                lever() {
+                    if (!ready()) return;
+                    noise({ dur: 0.08, vol: 0.35, type: 'bandpass', freq: 1800, q: 2 });
+                    tone(150, { type: 'square', dur: 0.1, vol: 0.18, freqEnd: 70 });
+                    noise({ start: 0.1, dur: 0.07, vol: 0.3, type: 'bandpass', freq: 900, q: 3 });
+                },
+                // Грохот колёс и стук на стыках, ускоряется вместе с трамваем
+                rolling(duration, vol = 0.22) {
+                    if (!ready()) return;
+                    const t = ctx.currentTime;
+                    const src = ctx.createBufferSource();
+                    src.buffer = noiseBuf;
+                    src.loop = true;
+                    const f = ctx.createBiquadFilter();
+                    f.type = 'lowpass';
+                    f.frequency.setValueAtTime(160, t);
+                    f.frequency.linearRampToValueAtTime(520, t + duration);
+                    const g = ctx.createGain();
+                    g.gain.setValueAtTime(0.0001, t);
+                    g.gain.linearRampToValueAtTime(vol, t + duration * 0.5);
+                    g.gain.linearRampToValueAtTime(0.0001, t + duration + 0.4);
+                    src.connect(f);
+                    f.connect(g);
+                    g.connect(master);
+                    src.start(t);
+                    src.stop(t + duration + 0.5);
+                    for (let s = 0.12; s < duration;) {
+                        const p = s / duration;
+                        const iv = 0.34 - 0.27 * p * p;
+                        noise({ start: s, dur: 0.035, vol: 0.12 + 0.12 * p, type: 'bandpass', freq: 2600, q: 4 });
+                        noise({ start: s + iv * 0.28, dur: 0.035, vol: 0.1 + 0.1 * p, type: 'bandpass', freq: 2200, q: 4 });
+                        s += iv;
+                    }
+                },
+                // Удар: глухой бум, хруст и звон осколков
+                impact() {
+                    if (!ready()) return;
+                    tone(120, { dur: 0.45, vol: 0.7, freqEnd: 32 });
+                    noise({ dur: 0.5, vol: 0.55, type: 'lowpass', freq: 5000, freqEnd: 200 });
+                    noise({ start: 0.02, dur: 0.3, vol: 0.18, type: 'highpass', freq: 3500 });
+                    for (let i = 0; i < 7; i++) {
+                        tone(2500 + Math.random() * 3500, { start: 0.03 + Math.random() * 0.25, dur: 0.18, vol: 0.05 });
+                    }
+                },
+                // Жетон смерти: зловещий нисходящий перезвон
+                token() {
+                    if (!ready()) return;
+                    tone(988, { type: 'triangle', dur: 0.5, vol: 0.16 });
+                    tone(740, { type: 'triangle', start: 0.13, dur: 0.6, vol: 0.15 });
+                    tone(466, { start: 0.26, dur: 1.1, vol: 0.14 });
+                },
+                // Выбывание: удар гонга
+                eliminated() {
+                    if (!ready()) return;
+                    [55, 82.5, 110, 151, 207, 274].forEach((f, i) => tone(f, { dur: 3.2 - i * 0.3, vol: 0.32 / (i * 0.6 + 1), attack: 0.01 }));
+                    noise({ dur: 1.4, vol: 0.12, type: 'lowpass', freq: 500 });
+                },
+                gameOver(won) {
+                    if (!ready()) return;
+                    const notes = won ? [523, 659, 784, 1047] : [440, 415, 392, 330];
+                    notes.forEach((f, i) => tone(f, { type: 'triangle', start: i * 0.16, dur: 0.6, vol: 0.15 }));
+                }
+            };
+            return api;
+        })();
 
         // ====================== СОСТОЯНИЕ ======================
         const state = {
@@ -382,9 +710,11 @@
             joined: false,
             screen: 'menu',
             players: [],
+            maxTokens: 5,
             round: null,
             launched: false,
-            timerEnd: 0
+            timerEnd: 0,
+            timerTotal: 20000
         };
 
         const $ = (id) => document.getElementById(id);
@@ -400,10 +730,23 @@
             return h;
         };
         const initials = (name) => name.trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase() || '?';
+        const playerById = (id) => state.players.find(p => p.id === id);
+        const nameById = (id) => (playerById(id) || {}).name || 'Игрок';
+        const me = () => playerById(socket.id);
+
+        function pipsHTML(tokens, max = state.maxTokens, popIndex = -1) {
+            let h = '';
+            for (let i = 0; i < max; i++) {
+                h += `<svg class="pip${i < tokens ? ' on' : ''}${i === popIndex ? ' pop' : ''}"><use href="#i-skull"/></svg>`;
+            }
+            return `<span class="pips">${h}</span>`;
+        }
 
         function showScreen(name) {
             state.screen = name;
             document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === `screen-${name}`));
+            document.body.classList.toggle('deco', name === 'menu' || name === 'lobby' || name === 'results');
+            document.body.classList.toggle('in-game', name === 'game');
             if (name === 'game') ensureGame();
         }
 
@@ -418,6 +761,24 @@
             }, ms);
         }
 
+        function announce(big, smallHTML) {
+            const el = $('announce');
+            $('announce-big').textContent = big;
+            $('announce-small').innerHTML = smallHTML;
+            el.classList.remove('show');
+            void el.offsetWidth;
+            el.classList.add('show');
+        }
+
+        // ====================== ЗВУК: КНОПКА ======================
+        function renderMute() {
+            $('mute-btn').innerHTML = `<svg class="icon"><use href="#${Sound.isMuted() ? 'i-mute' : 'i-sound'}"/></svg>`;
+            $('mute-btn').setAttribute('aria-label', Sound.isMuted() ? 'Включить звук' : 'Выключить звук');
+        }
+        $('mute-btn').addEventListener('click', () => { Sound.toggle(); renderMute(); Sound.click(); });
+        renderMute();
+        document.addEventListener('pointerdown', () => Sound.init(), { once: true });
+
         // ====================== МЕНЮ ======================
         try { $('name-input').value = localStorage.getItem('trolley-name') || ''; } catch (e) { }
 
@@ -425,6 +786,8 @@
             e.preventDefault();
             const name = $('name-input').value.trim();
             if (!name) return;
+            Sound.init();
+            Sound.join();
             state.name = name;
             try { localStorage.setItem('trolley-name', name); } catch (e) { }
             state.joined = true;
@@ -434,6 +797,7 @@
         });
 
         function leave() {
+            Sound.click();
             state.joined = false;
             state.round = null;
             socket.emit('leaveLobby');
@@ -442,12 +806,15 @@
         }
         $('lobby-back').addEventListener('click', leave);
         $('game-leave').addEventListener('click', leave);
+        $('results-btn').addEventListener('click', () => { Sound.click(); showScreen('lobby'); });
 
         // ====================== ЛОББИ ======================
-        $('start-btn').addEventListener('click', () => socket.emit('startGameRequest'));
+        $('rule-pips').innerHTML = pipsHTML(3, 5);
+        $('start-btn').addEventListener('click', () => { Sound.click(); socket.emit('startGameRequest'); });
 
         socket.on('lobbyUpdate', (data) => {
             state.players = data.players;
+            state.maxTokens = data.maxTokens;
             const count = data.players.length;
             const min = data.minPlayers;
             const ready = count >= min;
@@ -457,9 +824,11 @@
             $('lobby-pill').classList.toggle('ready', ready);
             $('lobby-pill-text').textContent = data.gameStarted ? 'Игра идёт' : ready ? 'Можно начинать' : 'Ждём игроков';
             $('start-btn').disabled = !ready || data.gameStarted;
-            $('lobby-hint').textContent = ready
-                ? 'Все готовы? Любой игрок может запустить игру.'
-                : `Нужно ещё ${min - count} ${plural(min - count, 'игрок', 'игрока', 'игроков')}. Отправьте друзьям ссылку на эту страницу.`;
+            $('lobby-hint').textContent = data.gameStarted
+                ? 'Игра уже идёт — вы сыграете в следующей.'
+                : ready
+                    ? 'Все готовы? Любой игрок может запустить игру.'
+                    : `Нужно ещё ${min - count} ${plural(min - count, 'игрок', 'игрока', 'игроков')}. Отправьте друзьям ссылку на эту страницу.`;
 
             const list = $('player-list');
             list.innerHTML = '';
@@ -532,7 +901,7 @@
             });
         }
 
-        // Квадратный центр кадра, отзеркаленный — как в превью
+        // Центр кадра, отзеркаленный — как в превью
         setInterval(() => {
             if (!state.joined || cameraState !== 'on' || localVideo.readyState < 2) return;
             const vw = localVideo.videoWidth, vh = localVideo.videoHeight;
@@ -552,13 +921,17 @@
         const MAIN_Y = 360, SWITCH_X = 330;
         const TRACK_Y = { A: 215, B: 545 };
         const TRACK_COLOR = { A: 0x3ddc97, B: 0xffb020 };
-        const CONDUCTOR_POS = { x: 170, y: 160 };
+        const CONDUCTOR_POS = { x: 170, y: 150 };
+        const LEVER_POS = { x: 292, y: 292 };
+        const BOARD = { x: 22, y: 452, w: 284, h: 250 };
         const TROLLEY_IDLE_X = 120;
-        const TROLLEY_RAIL_OFFSET = 10;   // колёса стоят на нижнем рельсе
+        const TROLLEY_RAIL_OFFSET = 12;   // колёса стоят на нижнем рельсе
         const TROLLEY_FRONT = 88;         // от центра трамвая до носа
+        const RAIL_GAUGE = 12;
         const VICTIM_START_X = 640, VICTIM_END_X = 1200;
         const BOX_W = 160, BOX_H = 120;
         const FONT = 'Inter, system-ui, sans-serif';
+        const DISPLAY_FONT = 'Unbounded, ' + FONT;
 
         let game = null;
         let gameScene = null;
@@ -574,7 +947,7 @@
             game = new Phaser.Game({
                 type: Phaser.AUTO,
                 parent: 'game-container',
-                backgroundColor: '#0b0d17',
+                backgroundColor: '#07080d',
                 scale: {
                     mode: Phaser.Scale.FIT,
                     autoCenter: Phaser.Scale.CENTER_BOTH,
@@ -585,32 +958,56 @@
             });
         }
 
+        // Детерминированный генератор случайных чисел — фон одинаковый у всех
+        function mulberry32(a) {
+            return function () {
+                a |= 0; a = a + 0x6D2B79F5 | 0;
+                let t = Math.imul(a ^ a >>> 15, 1 | a);
+                t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+                return ((t ^ t >>> 14) >>> 0) / 4294967296;
+            };
+        }
+
         class GameScene extends Phaser.Scene {
             constructor() { super('GameScene'); }
 
             preload() {
                 this.load.svg('trolley-body', 'assets/trolley.svg', { width: 360, height: 170 });
                 this.load.svg('trolley-wheel', 'assets/wheel.svg', { width: 44, height: 44 });
+                this.load.svg('skull', 'assets/skull.svg', { width: 32, height: 32 });
             }
 
             create() {
                 this.boxes = new Map();      // id -> контейнер с камерой
                 this.frameSeq = {};
                 this.paths = {};
+                this.debris = [];
+                this.markers = [];
 
-                this.drawBackground();
-                this.buildTracks();
-
-                this.debris = [];            // осколки после столкновения
-                this.markers = [];           // метки погибших на путях
                 this.makeTextures();
+                this.buildPaths();
+                this.drawWorld();
+                this.addAmbience();
+                this.buildLever();
+                this.buildBoard();
                 this.createTrolley();
 
                 gameScene = this;
                 pendingCalls.splice(0).forEach(([m, a]) => this[m](...a));
             }
 
-            // Мелкие текстуры для частиц
+            // ---------- Текстуры ----------
+            radialTexture(key, size, stops) {
+                if (this.textures.exists(key)) return;
+                const tex = this.textures.createCanvas(key, size, size);
+                const ctx = tex.context;
+                const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+                stops.forEach(([o, c]) => g.addColorStop(o, c));
+                ctx.fillStyle = g;
+                ctx.fillRect(0, 0, size, size);
+                tex.refresh();
+            }
+
             makeTextures() {
                 const g = this.make.graphics({ x: 0, y: 0, add: false });
                 g.fillStyle(0xffffff, 1).fillCircle(4, 4, 4);
@@ -618,21 +1015,310 @@
                 g.clear().fillStyle(0xffffff, 1).fillRect(0, 0, 10, 6);
                 g.generateTexture('chip', 10, 6);
                 g.destroy();
+
+                this.radialTexture('glow', 256, [[0, 'rgba(255,214,140,0.9)'], [0.35, 'rgba(255,180,90,0.35)'], [1, 'rgba(255,170,80,0)']]);
+                this.radialTexture('fog', 256, [[0, 'rgba(200,210,235,0.5)'], [1, 'rgba(200,210,235,0)']]);
+                this.radialTexture('soft', 64, [[0, 'rgba(255,255,255,1)'], [1, 'rgba(255,255,255,0)']]);
+
+                // Виньетка по краям
+                if (!this.textures.exists('vignette')) {
+                    const v = this.textures.createCanvas('vignette', W, H);
+                    const ctx = v.context;
+                    const grad = ctx.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, W * 0.75);
+                    grad.addColorStop(0, 'rgba(0,0,0,0)');
+                    grad.addColorStop(1, 'rgba(0,0,0,0.75)');
+                    ctx.fillStyle = grad;
+                    ctx.fillRect(0, 0, W, H);
+                    v.refresh();
+                }
             }
 
-            // Трамвай: кузов, колёса, фара и искры из-под колёс
+            // ---------- Пути ----------
+            buildPaths() {
+                const makePath = (y) => {
+                    const p = new Phaser.Curves.Path(-200, MAIN_Y);
+                    p.lineTo(SWITCH_X, MAIN_Y);
+                    p.cubicBezierTo(SWITCH_X + 150, y, SWITCH_X + 80, MAIN_Y, SWITCH_X + 70, y);
+                    p.lineTo(W + 260, y);
+                    return p;
+                };
+                this.paths.A = makePath(TRACK_Y.A);
+                this.paths.B = makePath(TRACK_Y.B);
+            }
+
+            sampler(path) {
+                const len = path.getLength();
+                const pointAt = (d) => path.getPoint(Phaser.Math.Clamp(d / len, 0, 1));
+                const normalAt = (d) => {
+                    const a = pointAt(d - 1), b = pointAt(d + 1);
+                    const dx = b.x - a.x, dy = b.y - a.y, l = Math.hypot(dx, dy) || 1;
+                    return { x: -dy / l, y: dx / l, tx: dx / l, ty: dy / l };
+                };
+                return { len, pointAt, normalAt };
+            }
+
+            strokeAlong(g, path, offset, width, color, alpha = 1, dy = 0) {
+                const { len, pointAt, normalAt } = this.sampler(path);
+                g.lineStyle(width, color, alpha);
+                g.beginPath();
+                for (let d = 0; d <= len; d += 5) {
+                    const p = pointAt(d), n = normalAt(d);
+                    const x = p.x + n.x * offset, y = p.y + n.y * offset + dy;
+                    if (d === 0) g.moveTo(x, y); else g.lineTo(x, y);
+                }
+                g.strokePath();
+            }
+
+            // Весь статичный мир рисуем один раз в RenderTexture
+            drawWorld() {
+                const rnd = mulberry32(1337);
+                const g = this.make.graphics({ x: 0, y: 0, add: false });
+
+                // Земля: тёмная почва с переходом
+                g.fillGradientStyle(0x0c0f17, 0x0c0f17, 0x0a0b10, 0x0a0b10, 1);
+                g.fillRect(0, 0, W, H);
+
+                // Крапинки почвы
+                for (let i = 0; i < 2600; i++) {
+                    const c = rnd() < 0.5 ? 0x131824 : 0x080a0f;
+                    g.fillStyle(c, 0.9);
+                    g.fillCircle(rnd() * W, rnd() * H, 0.6 + rnd() * 1.6);
+                }
+
+                // Пучки травы
+                for (let i = 0; i < 90; i++) {
+                    const x = rnd() * W, y = rnd() * H;
+                    const col = rnd() < 0.5 ? 0x1a2a20 : 0x22311f;
+                    g.lineStyle(2, col, 0.9);
+                    for (let k = 0; k < 5; k++) {
+                        const a = -Math.PI / 2 + (rnd() - 0.5) * 1.4;
+                        const l = 5 + rnd() * 8;
+                        g.lineBetween(x + k * 2 - 4, y, x + k * 2 - 4 + Math.cos(a) * l, y + Math.sin(a) * l);
+                    }
+                }
+
+                // Площадка стрелочника с полосами опасности
+                const pad = { x: CONDUCTOR_POS.x - 110, y: CONDUCTOR_POS.y - 96, w: 220, h: 226 };
+                g.fillStyle(0x151824, 1).fillRoundedRect(pad.x, pad.y, pad.w, pad.h, 14);
+                g.fillStyle(0x1c2030, 1).fillRoundedRect(pad.x + 8, pad.y + 8, pad.w - 16, pad.h - 16, 10);
+                for (let x = pad.x + 6; x < pad.x + pad.w - 6; x += 18) {
+                    g.fillStyle(0xffb020, 0.85);
+                    g.fillPoints([{ x, y: pad.y + pad.h - 10 }, { x: x + 9, y: pad.y + pad.h - 10 }, { x: x + 3, y: pad.y + pad.h - 2 }, { x: x - 6, y: pad.y + pad.h - 2 }], true);
+                }
+
+                // Табло (подложка, текст — отдельными объектами)
+                g.fillStyle(0x05060a, 1).fillRoundedRect(BOARD.x - 4, BOARD.y - 4, BOARD.w + 8, BOARD.h + 8, 16);
+                g.fillStyle(0x0f1119, 1).fillRoundedRect(BOARD.x, BOARD.y, BOARD.w, BOARD.h, 12);
+                g.lineStyle(1, 0xffb547, 0.18).strokeRoundedRect(BOARD.x + 0.5, BOARD.y + 0.5, BOARD.w - 1, BOARD.h - 1, 12);
+                // Сетка «светодиодов»
+                g.fillStyle(0xffb547, 0.035);
+                for (let x = BOARD.x + 6; x < BOARD.x + BOARD.w - 4; x += 5) {
+                    for (let y = BOARD.y + 6; y < BOARD.y + BOARD.h - 4; y += 5) g.fillRect(x, y, 2, 2);
+                }
+
+                ['A', 'B'].forEach(t => this.drawTrack(g, this.paths[t], rnd));
+
+                // Фонарные столбы (основания)
+                this.lampSpots = [{ x: 520, y: 380 }, { x: 1010, y: 380 }, { x: 770, y: 672 }, { x: 1180, y: 105 }, { x: 40, y: 290 }];
+                this.lampSpots.forEach(l => {
+                    g.fillStyle(0x000000, 0.5).fillEllipse(l.x + 4, l.y + 6, 26, 12);
+                    g.fillStyle(0x2a2f3f, 1).fillCircle(l.x, l.y, 9);
+                    g.fillStyle(0x454c60, 1).fillCircle(l.x - 2, l.y - 2, 5);
+                });
+
+                const rt = this.add.renderTexture(0, 0, W, H).setOrigin(0).setDepth(0);
+                rt.draw(g);
+                g.destroy();
+
+                // Подсветка путей (при наведении и после выбора) — поверх балласта
+                this.highlight = {};
+                ['A', 'B'].forEach(t => {
+                    const hl = this.add.graphics().setAlpha(0).setDepth(2).setBlendMode(Phaser.BlendModes.ADD);
+                    this.strokeAlong(hl, this.paths[t], 0, 70, TRACK_COLOR[t], 0.16);
+                    this.strokeAlong(hl, this.paths[t], 0, 34, TRACK_COLOR[t], 0.16);
+                    this.highlight[t] = hl;
+                });
+
+                // Метки путей — как железнодорожные таблички
+                ['A', 'B'].forEach(t => {
+                    const x = SWITCH_X + 205, y = TRACK_Y[t] - 52;
+                    const plate = this.add.graphics().setDepth(5);
+                    plate.fillStyle(0x000000, 0.45).fillRoundedRect(x - 20, y - 18, 44, 40, 9);
+                    plate.fillStyle(TRACK_COLOR[t], 1).fillRoundedRect(x - 22, y - 21, 44, 40, 9);
+                    plate.lineStyle(3, 0x07080d, 0.6).strokeRoundedRect(x - 18, y - 17, 36, 32, 6);
+                    plate.fillStyle(0x2a2f3f, 1).fillRect(x - 2, y + 19, 4, 18);
+                    this.add.text(x, y - 1, t, {
+                        fontFamily: DISPLAY_FONT, fontSize: '20px', fontStyle: '800', color: '#07080d'
+                    }).setOrigin(0.5).setDepth(6);
+                });
+
+            }
+
+            drawTrack(g, path, rnd) {
+                const { len, pointAt, normalAt } = this.sampler(path);
+
+                // Балластная призма: тень, основание, щебень
+                this.strokeAlong(g, path, 0, 78, 0x050609, 0.8, 4);
+                this.strokeAlong(g, path, 0, 70, 0x1c1e26, 1);
+                this.strokeAlong(g, path, 0, 56, 0x24262f, 1);
+                for (let d = 0; d < len; d += 1.6) {
+                    const p = pointAt(d), n = normalAt(d);
+                    const off = (rnd() - 0.5) * 66;
+                    const tone = rnd();
+                    const c = tone < 0.33 ? 0x2f323d : tone < 0.66 ? 0x3a3d49 : 0x17181f;
+                    g.fillStyle(c, 0.95);
+                    g.fillCircle(p.x + n.x * off + (rnd() - 0.5) * 2, p.y + n.y * off + (rnd() - 0.5) * 2, 0.8 + rnd() * 1.5);
+                }
+
+                // Шпалы: тень, дерево, блик, следы износа
+                for (let d = 10; d < len; d += 21) {
+                    const p = pointAt(d), n = normalAt(d);
+                    const hw = 25, hh = 4.5;
+                    const corners = (ox, oy, w, h) => [
+                        { x: p.x + n.x * -w + n.tx * -h + ox, y: p.y + n.y * -w + n.ty * -h + oy },
+                        { x: p.x + n.x * w + n.tx * -h + ox, y: p.y + n.y * w + n.ty * -h + oy },
+                        { x: p.x + n.x * w + n.tx * h + ox, y: p.y + n.y * w + n.ty * h + oy },
+                        { x: p.x + n.x * -w + n.tx * h + ox, y: p.y + n.y * -w + n.ty * h + oy }
+                    ];
+                    g.fillStyle(0x000000, 0.45).fillPoints(corners(2, 3, hw, hh), true);
+                    const wood = [0x4a3729, 0x433226, 0x513c2c][Math.floor(rnd() * 3)];
+                    g.fillStyle(wood, 1).fillPoints(corners(0, 0, hw, hh), true);
+                    g.fillStyle(0x6a503b, 0.6).fillPoints(corners(-n.tx * 2.5, -n.ty * 2.5, hw - 1, 1), true);
+                    // Подкладки под рельсами
+                    [-RAIL_GAUGE, RAIL_GAUGE].forEach(o => {
+                        const cx = p.x + n.x * o, cy = p.y + n.y * o;
+                        g.fillStyle(0x23252d, 1).fillRect(cx - 4, cy - 5, 8, 10);
+                        g.fillStyle(0x6b7280, 1).fillCircle(cx - 2.5, cy - 3, 0.9).fillCircle(cx + 2.5, cy + 3, 0.9);
+                    });
+                }
+
+                // Рельсы: тень, тело, блик головки
+                [-RAIL_GAUGE, RAIL_GAUGE].forEach(o => {
+                    this.strokeAlong(g, path, o, 6, 0x000000, 0.55, 3);
+                    this.strokeAlong(g, path, o, 5, 0x4b5160, 1);
+                    this.strokeAlong(g, path, o - 1, 2, 0xc9d0dc, 1);
+                    this.strokeAlong(g, path, o - 1.3, 0.8, 0xffffff, 0.7);
+                });
+            }
+
+            // ---------- Атмосфера: фонари, туман, виньетка ----------
+            addAmbience() {
+                this.lampSpots.forEach((l, i) => {
+                    const glow = this.add.image(l.x, l.y, 'glow').setScale(1.5).setAlpha(0.32)
+                        .setBlendMode(Phaser.BlendModes.ADD).setDepth(3);
+                    this.add.image(l.x - 2, l.y - 2, 'soft').setScale(0.4).setTint(0xffe1a8).setDepth(4)
+                        .setBlendMode(Phaser.BlendModes.ADD);
+                    // Один фонарь неисправен и мигает
+                    if (i === 1) {
+                        const flicker = () => {
+                            const on = Math.random() < 0.7;
+                            glow.setAlpha(on ? 0.32 : 0.06);
+                            this.time.delayedCall(on ? Phaser.Math.Between(400, 2600) : Phaser.Math.Between(40, 140), flicker);
+                        };
+                        flicker();
+                    }
+                });
+
+                for (let i = 0; i < 5; i++) {
+                    const fog = this.add.image(Phaser.Math.Between(0, W), Phaser.Math.Between(80, H - 40), 'fog')
+                        .setScale(Phaser.Math.FloatBetween(2.4, 3.6), Phaser.Math.FloatBetween(1, 1.6))
+                        .setAlpha(0.05).setDepth(28).setBlendMode(Phaser.BlendModes.SCREEN);
+                    this.tweens.add({
+                        targets: fog, x: fog.x + Phaser.Math.Between(-260, 260), alpha: 0.09,
+                        duration: Phaser.Math.Between(9000, 15000), yoyo: true, repeat: -1, ease: 'Sine.easeInOut'
+                    });
+                }
+
+                this.add.image(0, 0, 'vignette').setOrigin(0).setDepth(35);
+            }
+
+            // ---------- Рычаг стрелки ----------
+            buildLever() {
+                const { x, y } = LEVER_POS;
+                const base = this.add.graphics().setDepth(6);
+                base.fillStyle(0x000000, 0.5).fillRoundedRect(x - 15, y - 7, 34, 22, 6);
+                base.fillStyle(0x2a2f3f, 1).fillRoundedRect(x - 17, y - 10, 34, 20, 6);
+                base.fillStyle(0x3b4256, 1).fillRoundedRect(x - 13, y - 7, 26, 6, 3);
+                // Тяга к стрелке
+                base.lineStyle(3, 0x4b5160, 1).lineBetween(x, y + 8, SWITCH_X + 6, MAIN_Y - 16);
+
+                const handle = this.add.container(x, y).setDepth(7);
+                const h = this.add.graphics();
+                h.lineStyle(6, 0x8f97ae, 1).lineBetween(0, 0, 0, -38);
+                h.fillStyle(0xff2e4d, 1).fillCircle(0, -40, 8);
+                h.fillStyle(0xffffff, 0.5).fillCircle(-2.5, -42.5, 2.5);
+                handle.add(h);
+                this.lever = handle;
+
+                // Сигнал стрелки
+                this.switchLamp = this.add.circle(SWITCH_X - 4, MAIN_Y - 30, 7, 0xffffff).setDepth(7);
+                this.switchLampGlow = this.add.image(SWITCH_X - 4, MAIN_Y - 30, 'soft').setScale(0.9).setDepth(6)
+                    .setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.6);
+            }
+
+            setLever(track) {
+                const angle = track === 'A' ? -32 : track === 'B' ? 32 : 0;
+                const color = track ? TRACK_COLOR[track] : 0xffffff;
+                this.tweens.add({ targets: this.lever, angle, duration: 220, ease: 'Back.out' });
+                this.switchLamp.setFillStyle(color);
+                this.switchLampGlow.setTint(color);
+            }
+
+            // ---------- Табло жетонов ----------
+            buildBoard() {
+                this.add.text(BOARD.x + 16, BOARD.y + 14, 'ЖЕТОНЫ СМЕРТИ', {
+                    fontFamily: DISPLAY_FONT, fontSize: '12px', fontStyle: '600', color: '#ffb547'
+                }).setDepth(6);
+                this.boardRows = this.add.container(0, 0).setDepth(6);
+            }
+
+            updateBoard() {
+                this.boardRows.removeAll(true);
+                const list = state.players.filter(p => p.status !== 'waiting');
+                if (!list.length) return;
+                const top = BOARD.y + 42;
+                const rowH = Math.min(26, (BOARD.h - 52) / list.length);
+                const s = Math.min(1, rowH / 26);
+                const conductorId = state.round && state.round.conductorId;
+                list.forEach((p, i) => {
+                    const y = top + i * rowH + rowH / 2;
+                    const out = p.status === 'out';
+                    let name = p.name.length > 11 ? p.name.slice(0, 10) + '…' : p.name;
+                    if (p.id === socket.id) name += ' •';
+                    const color = out ? '#5b5866' : p.id === conductorId ? '#ffd166' : '#f2e3c9';
+                    const t = this.add.text(BOARD.x + 16, y, name, {
+                        fontFamily: FONT, fontSize: `${Math.round(14 * s)}px`, fontStyle: '600', color
+                    }).setOrigin(0, 0.5);
+                    this.boardRows.add(t);
+                    if (out) {
+                        const strike = this.add.rectangle(BOARD.x + 16, y, t.width, 2, 0xff2e4d).setOrigin(0, 0.5);
+                        this.boardRows.add(strike);
+                    }
+                    for (let k = 0; k < state.maxTokens; k++) {
+                        const on = k < p.tokens;
+                        const sk = this.add.image(BOARD.x + BOARD.w - 18 - (state.maxTokens - 1 - k) * 19 * s, y, 'skull')
+                            .setScale(0.5 * s)
+                            .setTint(on ? 0xff2e4d : 0xffffff)
+                            .setAlpha(on ? 1 : out ? 0.06 : 0.14);
+                        this.boardRows.add(sk);
+                    }
+                });
+            }
+
+            // ---------- Трамвай ----------
             createTrolley() {
                 const t = this.add.container(TROLLEY_IDLE_X, MAIN_Y + TROLLEY_RAIL_OFFSET).setDepth(20).setScale(0.5);
 
                 const beam = this.add.graphics().setBlendMode(Phaser.BlendModes.ADD).setAlpha(0);
-                beam.fillStyle(0xfff1c2, 0.35);
+                beam.fillStyle(0xfff1c2, 0.3);
                 beam.fillTriangle(158, -44, 640, -150, 640, 70);
-                beam.fillStyle(0xfff1c2, 0.25);
+                beam.fillStyle(0xfff1c2, 0.22);
                 beam.fillTriangle(158, -44, 460, -100, 460, 30);
 
+                const shadow = this.add.ellipse(0, 4, 360, 30, 0x000000, 0.45);
                 const body = this.add.image(-180, -170, 'trolley-body').setOrigin(0, 0);
                 const wheels = [-85, 75].map(x => this.add.image(x, -22, 'trolley-wheel'));
-                t.add([beam, body, ...wheels]);
+                t.add([beam, shadow, body, ...wheels]);
 
                 this.trolley = t;
                 this.trolleyBeam = beam;
@@ -654,92 +1340,13 @@
                 this.sparks.startFollow(t, -40, -2);
             }
 
-            // Вращаем колёса пропорционально пройденному пути
             spinWheels() {
                 const dx = this.trolley.x - this.trolleyLastX;
                 this.trolleyLastX = this.trolley.x;
                 this.trolleyWheels.forEach(w => w.rotation += dx / 11);
             }
 
-            drawBackground() {
-                const g = this.add.graphics();
-                // Мягкая сетка точек
-                g.fillStyle(0xffffff, 0.05);
-                for (let x = 20; x < W; x += 40) {
-                    for (let y = 20; y < H; y += 40) g.fillCircle(x, y, 1.4);
-                }
-                // Земля под путями
-                g.fillStyle(0x161a2c, 1);
-                g.fillRoundedRect(SWITCH_X + 140, TRACK_Y.A - 88, W - SWITCH_X - 150, 176, 24);
-                g.fillRoundedRect(SWITCH_X + 140, TRACK_Y.B - 88, W - SWITCH_X - 150, 176, 24);
-            }
-
-            buildTracks() {
-                const makePath = (y) => {
-                    const p = new Phaser.Curves.Path(-200, MAIN_Y);
-                    p.lineTo(SWITCH_X, MAIN_Y);
-                    p.cubicBezierTo(SWITCH_X + 150, y, SWITCH_X + 80, MAIN_Y, SWITCH_X + 70, y);
-                    p.lineTo(W + 260, y);
-                    return p;
-                };
-                this.paths.A = makePath(TRACK_Y.A);
-                this.paths.B = makePath(TRACK_Y.B);
-
-                // Подсветка путей (при наведении и после выбора)
-                this.highlight = {};
-                ['A', 'B'].forEach(t => {
-                    const hl = this.add.graphics().setAlpha(0);
-                    hl.lineStyle(40, TRACK_COLOR[t], 0.35);
-                    this.paths[t].draw(hl, 128);
-                    this.highlight[t] = hl;
-                });
-
-                const g = this.add.graphics();
-                ['A', 'B'].forEach(t => this.drawRails(g, this.paths[t]));
-
-                // Метки путей
-                ['A', 'B'].forEach(t => {
-                    const y = TRACK_Y[t];
-                    const c = this.add.circle(SWITCH_X + 205, y, 24, TRACK_COLOR[t]).setDepth(5);
-                    c.setStrokeStyle(4, 0x0b0d17);
-                    this.add.text(SWITCH_X + 205, y, t, {
-                        fontFamily: 'Unbounded, ' + FONT, fontSize: '22px', fontStyle: '800', color: '#0b0d17'
-                    }).setOrigin(0.5).setDepth(6);
-                });
-
-                // Стрелка стрелки
-                this.switchArrow = this.add.triangle(SWITCH_X - 10, MAIN_Y, 0, 0, 22, 12, 0, 24, 0xffffff)
-                    .setOrigin(0.5).setDepth(6).setAlpha(0.8);
-            }
-
-            drawRails(g, path) {
-                const len = path.getLength();
-                const pointAt = (d) => path.getPoint(Phaser.Math.Clamp(d / len, 0, 1));
-                const normalAt = (d) => {
-                    const a = pointAt(d - 1), b = pointAt(d + 1);
-                    const dx = b.x - a.x, dy = b.y - a.y, l = Math.hypot(dx, dy) || 1;
-                    return { x: -dy / l, y: dx / l };
-                };
-                // Шпалы
-                g.lineStyle(7, 0x3a3150, 1);
-                for (let d = 0; d < len; d += 22) {
-                    const p = pointAt(d), n = normalAt(d);
-                    g.lineBetween(p.x - n.x * 16, p.y - n.y * 16, p.x + n.x * 16, p.y + n.y * 16);
-                }
-                // Рельсы
-                [-9, 9].forEach(off => {
-                    g.lineStyle(3, 0xa3abc2, 1);
-                    g.beginPath();
-                    for (let d = 0; d <= len; d += 6) {
-                        const p = pointAt(d), n = normalAt(d);
-                        const x = p.x + n.x * off, y = p.y + n.y * off;
-                        if (d === 0) g.moveTo(x, y); else g.lineTo(x, y);
-                    }
-                    g.strokePath();
-                });
-            }
-
-            // ----- Рамки игроков -----
+            // ---------- Рамки игроков ----------
             textureFor(id) {
                 const key = `cam_${id}`;
                 if (!this.textures.exists(key)) this.textures.createCanvas(key, CAM_W, CAM_H);
@@ -747,35 +1354,48 @@
             }
 
             nameOf(id) {
-                const p = state.players.find(p => p.id === id);
-                const name = p ? p.name : (state.round && state.round.names[id]) || 'Игрок';
+                const name = nameById(id);
                 return id === socket.id ? `${name} (вы)` : name;
             }
 
             createBox(id) {
                 const box = this.add.container(CONDUCTOR_POS.x, CONDUCTOR_POS.y).setDepth(10);
+                const shadow = this.add.graphics();
+                shadow.fillStyle(0x000000, 0.5).fillRoundedRect(-BOX_W / 2 - 1, -BOX_H / 2 + 5, BOX_W + 12, BOX_H + 12, 14);
                 const frame = this.add.graphics();
-                const placeholder = this.add.rectangle(0, 0, BOX_W, BOX_H, 0x1b2036);
-                const realName = (this.nameOf(id) || '?').replace(' (вы)', '');
-                const initialsText = this.add.text(0, -4, initials(realName), {
+                const placeholder = this.add.rectangle(0, 0, BOX_W, BOX_H, 0x161a28);
+                const initialsText = this.add.text(0, -4, initials(nameById(id)), {
                     fontFamily: FONT, fontSize: '34px', fontStyle: '700',
                     color: `hsl(${hueFor(id)}, 80%, 70%)`
                 }).setOrigin(0.5);
                 const video = this.add.image(0, 0, this.textureFor(id)).setDisplaySize(BOX_W, BOX_H);
                 const label = this.add.text(0, BOX_H / 2 + 18, this.nameOf(id), {
-                    fontFamily: FONT, fontSize: '16px', fontStyle: '600', color: '#f1f3fa',
-                    backgroundColor: 'rgba(11,13,23,0.85)', padding: { x: 10, y: 4 }
+                    fontFamily: FONT, fontSize: '16px', fontStyle: '600', color: '#f2efe9',
+                    backgroundColor: 'rgba(7,8,13,0.88)', padding: { x: 10, y: 4 }
                 }).setOrigin(0.5);
                 const roleTag = this.add.text(0, -BOX_H / 2 - 16, '', {
-                    fontFamily: FONT, fontSize: '13px', fontStyle: '700', color: '#0b0d17',
+                    fontFamily: FONT, fontSize: '13px', fontStyle: '700', color: '#07080d',
                     padding: { x: 8, y: 3 }
                 }).setOrigin(0.5);
+                const pips = this.add.container(0, BOX_H / 2 + 42);
 
-                box.add([frame, placeholder, initialsText, video, label, roleTag]);
-                Object.assign(box, { playerId: id, frame, video, label, roleTag, isDead: false });
+                box.add([shadow, frame, placeholder, initialsText, video, label, roleTag, pips]);
+                Object.assign(box, { playerId: id, frame, video, label, roleTag, pips, isDead: false });
                 box.setScale(0.2).setAlpha(0);
                 this.boxes.set(id, box);
                 return box;
+            }
+
+            renderPips(box) {
+                box.pips.removeAll(true);
+                const p = playerById(box.playerId);
+                const tokens = p ? p.tokens : 0;
+                const n = state.maxTokens;
+                for (let k = 0; k < n; k++) {
+                    const on = k < tokens;
+                    box.pips.add(this.add.image((k - (n - 1) / 2) * 20, 0, 'skull')
+                        .setScale(0.55).setTint(on ? 0xff2e4d : 0xffffff).setAlpha(on ? 1 : 0.22));
+                }
             }
 
             styleBox(box, role) {
@@ -791,10 +1411,12 @@
                 box.roleTag.setText(tagText).setVisible(!!tagText);
                 if (tagText) box.roleTag.setBackgroundColor('#ffd166');
                 box.label.setText(this.nameOf(box.playerId));
+                this.renderPips(box);
             }
 
             updateNames() {
                 this.boxes.forEach(b => b.label.setText(this.nameOf(b.playerId)));
+                this.updateBoard();
             }
 
             applyFrame(data) {
@@ -819,6 +1441,7 @@
                 if (this.textures.exists(`cam_${id}`)) {
                     this.time.delayedCall(350, () => this.textures.exists(`cam_${id}`) && this.textures.remove(`cam_${id}`));
                 }
+                this.updateBoard();
             }
 
             clearMarkers() {
@@ -831,10 +1454,12 @@
                 this.boxes.forEach(b => b.destroy());
                 this.boxes.clear();
                 this.previewTrack(null);
+                this.setLever(null);
                 this.resetTrolley(false);
+                this.updateBoard();
             }
 
-            // ----- Раунд -----
+            // ---------- Раунд ----------
             applyRound(data) {
                 const placements = new Map();
                 placements.set(data.conductorId, { x: CONDUCTOR_POS.x, y: CONDUCTOR_POS.y, s: 1, role: 'conductor' });
@@ -849,7 +1474,6 @@
                     ids.forEach((id, i) => placements.set(id, { x: x0 + i * step, y: TRACK_Y[t], s: Math.max(0.55, s), role: t }));
                 });
 
-                // Убираем тех, кого нет в раунде
                 [...this.boxes.keys()].forEach(id => {
                     if (!placements.has(id)) this.removePlayer(id);
                 });
@@ -871,7 +1495,8 @@
                 });
 
                 this.previewTrack(null);
-                this.switchArrow.setAngle(0).setFillStyle(0xffffff);
+                this.setLever(null);
+                this.updateBoard();
                 this.resetTrolley(true);
             }
 
@@ -892,27 +1517,31 @@
                 if (!animate) { this.trolley.setX(TROLLEY_IDLE_X); this.trolleyLastX = TROLLEY_IDLE_X; return; }
                 this.trolley.setX(-200);
                 this.trolleyLastX = -200;
+                Sound.rolling(0.9, 0.12);
                 this.tweens.add({
                     targets: this.trolley, x: TROLLEY_IDLE_X, duration: 900, ease: 'Back.out',
-                    onUpdate: () => this.spinWheels()
+                    onUpdate: () => this.spinWheels(),
+                    onComplete: () => Sound.bell()
                 });
             }
 
-            launch(track, victims) {
+            launch(track, victims, eliminated) {
                 this.previewTrack(track);
-                this.switchArrow.setFillStyle(TRACK_COLOR[track]);
-                this.tweens.add({ targets: this.switchArrow, angle: track === 'A' ? -40 : 40, duration: 200 });
+                this.setLever(track);
+                Sound.lever();
+                Sound.rolling(3.2);
 
                 this.tweens.killTweensOf(this.trolley);
                 const path = this.paths[track];
                 const len = path.getLength();
                 const startT = (this.trolley.x + 200) / len;
                 const victimSet = new Set(victims);
+                this.pendingElims = new Set(eliminated || []);
                 const prev = new Phaser.Math.Vector2();
                 const cur = new Phaser.Math.Vector2();
                 const progress = { t: startT };
                 this.sparks.start();
-                this.tweens.add({ targets: this.trolleyBeam, alpha: 0.7, duration: 300 });
+                this.tweens.add({ targets: this.trolleyBeam, alpha: 0.75, duration: 300 });
 
                 this.trolleyTween = this.tweens.add({
                     targets: progress,
@@ -922,7 +1551,6 @@
                     onUpdate: () => {
                         path.getPoint(Math.min(1, progress.t), cur);
                         path.getPoint(Math.max(0, progress.t - 0.004), prev);
-                        // Лёгкая тряска на ходу
                         const bump = Math.sin(this.time.now / 45) * 1.2;
                         this.trolley.setPosition(cur.x, cur.y + TROLLEY_RAIL_OFFSET + bump);
                         this.trolley.setRotation(Math.atan2(cur.y - prev.y, cur.x - prev.x) * 0.6);
@@ -943,33 +1571,32 @@
                 this.tweens.killTweensOf(box);
                 const s = box.scale;
                 const cx = box.x, cy = box.y;
-                const color = box.playerId === socket.id ? 0xffffff : (state.round && state.round.trackA.includes(box.playerId) ? TRACK_COLOR.A : TRACK_COLOR.B);
                 const isMe = box.playerId === socket.id;
+                const color = isMe ? 0xffffff : (state.round && state.round.trackA.includes(box.playerId) ? TRACK_COLOR.A : TRACK_COLOR.B);
+                Sound.impact();
 
-                // 1. Стоп-кадр: трамвай на мгновение «вязнет» в ударе
+                // Стоп-кадр
                 if (this.trolleyTween) {
                     this.trolleyTween.timeScale = 0.08;
                     this.time.delayedCall(110, () => { if (this.trolleyTween) this.trolleyTween.timeScale = 1; });
                 }
 
-                // 2. Вспышка и ударная волна
+                // Вспышка и ударная волна
                 const flash = this.add.circle(cx - 60 * s, cy, 70 * s, 0xffffff, 0.9).setDepth(26).setBlendMode(Phaser.BlendModes.ADD);
                 this.tweens.add({ targets: flash, scale: 2.2, alpha: 0, duration: 260, ease: 'Quad.easeOut', onComplete: () => flash.destroy() });
-                const ring = this.add.circle(cx - 60 * s, cy, 40 * s).setStrokeStyle(6, 0xff4d5e, 1).setDepth(26);
+                const ring = this.add.circle(cx - 60 * s, cy, 40 * s).setStrokeStyle(6, 0xff2e4d, 1).setDepth(26);
                 this.tweens.add({ targets: ring, scale: 4, alpha: 0, duration: 500, ease: 'Cubic.easeOut', onComplete: () => ring.destroy() });
 
-                // 3. Рамка с камерой разлетается на осколки
                 this.shatter(box, color);
                 box.setVisible(false);
 
-                // 4. Искры и щепки
                 const burst = this.add.particles(cx - 50 * s, cy, 'spark', {
                     speed: { min: 200, max: 650 },
                     angle: { min: -80, max: 60 },
                     gravityY: 900,
                     lifespan: { min: 300, max: 700 },
                     scale: { start: 1.1, end: 0 },
-                    tint: [0xffffff, 0xffd166, 0xff4d5e],
+                    tint: [0xffffff, 0xffd166, 0xff2e4d],
                     blendMode: 'ADD',
                     emitting: false
                 }).setDepth(27);
@@ -981,31 +1608,50 @@
                     gravityY: 1300,
                     lifespan: 1100,
                     alpha: { start: 1, end: 0 },
-                    tint: [color, 0x1b2036, 0xff4d5e],
+                    tint: [color, 0x1b2036, 0xff2e4d],
                     emitting: false
                 }).setDepth(24);
                 chips.explode(22);
                 this.time.delayedCall(1300, () => { burst.destroy(); chips.destroy(); });
 
-                // 5. Звукоподражание
                 const word = Phaser.Utils.Array.GetRandom(['БАХ!', 'ХРЯСЬ!', 'БУМ!', 'ШМЯК!']);
                 const pow = this.add.text(cx + 10, cy - 70 * s, word, {
-                    fontFamily: 'Unbounded, ' + FONT, fontSize: '40px', fontStyle: '800',
-                    color: '#ffd166', stroke: '#0b0d17', strokeThickness: 8
+                    fontFamily: DISPLAY_FONT, fontSize: '40px', fontStyle: '800',
+                    color: '#ffd166', stroke: '#07080d', strokeThickness: 8
                 }).setOrigin(0.5).setDepth(30).setScale(0.2).setAngle(Phaser.Math.Between(-14, 14));
                 this.tweens.add({ targets: pow, scale: 1, duration: 220, ease: 'Back.out' });
                 this.tweens.add({ targets: pow, alpha: 0, y: pow.y - 30, delay: 650, duration: 350, onComplete: () => pow.destroy() });
 
-                // 6. Метка на месте гибели до конца раунда
-                const name = this.nameOf(box.playerId);
-                const marker = this.add.text(cx, cy, `✕  ${name}`, {
-                    fontFamily: FONT, fontSize: '15px', fontStyle: '700', color: '#ff8a96',
-                    backgroundColor: 'rgba(11,13,23,0.85)', padding: { x: 10, y: 5 }
-                }).setOrigin(0.5).setDepth(8).setAlpha(0);
-                this.tweens.add({ targets: marker, alpha: 1, delay: 500, duration: 400 });
+                // Метка на месте гибели + вылетающий жетон смерти
+                const p = playerById(box.playerId);
+                const tokens = p ? p.tokens : 0;
+                const out = this.pendingElims && this.pendingElims.has(box.playerId);
+                const marker = this.add.container(cx, cy).setDepth(8).setAlpha(0);
+                const mText = this.add.text(0, 0, out ? `${this.nameOf(box.playerId)} — ВЫБЫЛ` : `${this.nameOf(box.playerId)}   ${tokens}/${state.maxTokens}`, {
+                    fontFamily: FONT, fontSize: '15px', fontStyle: '700', color: out ? '#ffffff' : '#ff8a96',
+                    backgroundColor: out ? 'rgba(200,20,45,0.9)' : 'rgba(7,8,13,0.9)', padding: { x: 28, y: 5 }
+                }).setOrigin(0.5);
+                const mSkull = this.add.image(-mText.width / 2 + 15, 0, 'skull').setScale(0.55).setTint(out ? 0xffffff : 0xff2e4d);
+                marker.add([mText, mSkull]);
+                marker.setScale(Math.min(1, s * 1.05));
                 this.markers.push(marker);
 
-                // 7. Камера
+                const coin = this.add.image(cx, cy, 'skull').setDepth(31).setScale(0.2).setTint(0xff2e4d);
+                const coinGlow = this.add.image(cx, cy, 'soft').setDepth(30).setScale(0.5).setTint(0xff2e4d).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.8);
+                this.tweens.add({ targets: [coin, coinGlow], y: cy - 90 * s, duration: 450, ease: 'Cubic.easeOut' });
+                this.tweens.add({ targets: coin, scale: 1.6, duration: 450, ease: 'Back.out' });
+                this.tweens.add({ targets: coin, scaleX: { from: 1.6, to: -1.6 }, delay: 450, duration: 180, yoyo: true, repeat: 1 });
+                this.time.delayedCall(420, () => Sound.token());
+                this.tweens.add({
+                    targets: [coin, coinGlow], y: cy, scale: 0.55, alpha: { from: 1, to: 0.9 }, delay: 1200, duration: 320, ease: 'Cubic.easeIn',
+                    onComplete: () => {
+                        coin.destroy();
+                        coinGlow.destroy();
+                        this.tweens.add({ targets: marker, alpha: 1, duration: 200 });
+                        this.cameras.main.shake(80, 0.003);
+                    }
+                });
+
                 this.cameras.main.shake(isMe ? 380 : 220, isMe ? 0.018 : 0.01);
                 if (isMe) {
                     this.cameras.main.flash(300, 255, 60, 80);
@@ -1014,23 +1660,22 @@
                 }
             }
 
-            // Снимок текущего кадра камеры режем на куски и бросаем вперёд
+            // Снимок кадра камеры режем на куски и бросаем вперёд
             shatter(box, color) {
                 const s = box.scale;
                 const id = box.playerId;
                 const key = `snap_${id}_${Date.now()}`;
                 const snap = this.textures.createCanvas(key, CAM_W, CAM_H);
                 const ctx = snap.context;
-                ctx.fillStyle = '#1b2036';
+                ctx.fillStyle = '#161a28';
                 ctx.fillRect(0, 0, CAM_W, CAM_H);
                 ctx.fillStyle = `hsl(${hueFor(id)}, 80%, 70%)`;
                 ctx.font = '700 34px Inter, sans-serif';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
-                ctx.fillText(initials(this.nameOf(id).replace(' (вы)', '')), CAM_W / 2, CAM_H / 2 - 4);
+                ctx.fillText(initials(nameById(id)), CAM_W / 2, CAM_H / 2 - 4);
                 const camKey = `cam_${id}`;
                 if (this.textures.exists(camKey)) ctx.drawImage(this.textures.get(camKey).getSourceImage(), 0, 0);
-                // Тонкие «трещины» по снимку
                 ctx.strokeStyle = 'rgba(255,255,255,0.55)';
                 ctx.lineWidth = 1.5;
                 for (let i = 0; i < 5; i++) {
@@ -1066,7 +1711,6 @@
                     }
                 }
 
-                // Куски цветной рамки
                 for (let i = 0; i < 8; i++) {
                     const bar = this.add.rectangle(
                         box.x + Phaser.Math.Between(-80, 80) * s,
@@ -1086,7 +1730,6 @@
                 this.time.delayedCall(1700, () => { if (this.textures.exists(key)) this.textures.remove(key); });
             }
 
-            // Простая физика осколков
             update(time, delta) {
                 const dt = delta / 1000;
                 for (let i = this.debris.length - 1; i >= 0; i--) {
@@ -1109,28 +1752,30 @@
 
         // ====================== HUD ======================
         const choiceButtons = document.querySelectorAll('.choice-btn');
+        let lastTick = -1;
 
-        function setBanner(title, sub, kind) {
+        function setBanner(title, subHTML, kind) {
             $('role-title').textContent = title;
-            $('role-sub').textContent = sub;
+            $('role-sub').innerHTML = subHTML;
             $('banner').className = `banner ${kind || ''}`;
         }
 
-        function nameById(id) {
-            const p = state.players.find(p => p.id === id);
-            return p ? p.name : (state.round && state.round.names[id]) || 'Игрок';
-        }
+        const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
         function updateTimer() {
             const timer = $('timer');
             if (!state.round || state.launched) {
                 timer.classList.add('hidden');
+                lastTick = -1;
             } else {
                 const left = Math.max(0, state.timerEnd - Date.now());
+                const sec = Math.ceil(left / 1000);
                 timer.classList.remove('hidden');
                 timer.classList.toggle('urgent', left < 5000);
                 $('timer-fill').style.width = `${(left / state.timerTotal) * 100}%`;
-                $('timer-text').textContent = Math.ceil(left / 1000);
+                $('timer-text').textContent = sec;
+                if (sec !== lastTick && sec <= 5 && sec > 0 && state.screen === 'game') Sound.tick(sec <= 3);
+                lastTick = sec;
             }
             requestAnimationFrame(updateTimer);
         }
@@ -1145,7 +1790,7 @@
         choiceButtons.forEach(btn => {
             const t = btn.dataset.track;
             btn.addEventListener('click', () => chooseTrack(t));
-            btn.addEventListener('mouseenter', () => gameScene && gameScene.previewTrack(t));
+            btn.addEventListener('mouseenter', () => { if (gameScene && !state.launched) { gameScene.previewTrack(t); Sound.click(); } });
             btn.addEventListener('mouseleave', () => gameScene && !state.launched && gameScene.previewTrack(null));
         });
 
@@ -1155,26 +1800,34 @@
             if (e.key === '2' || e.key === 'ArrowDown') chooseTrack('B');
         });
 
+        function myTokensHTML() {
+            const p = me();
+            return p ? `${pipsHTML(p.tokens)}` : '';
+        }
+
         // ====================== СОБЫТИЯ СЕРВЕРА ======================
         socket.on('startGame', () => {
             if (!state.joined) return;
             showScreen('game');
             setBanner('Игра начинается…', 'Первый стрелочник будет выбран через секунду');
+            Sound.roundStart();
         });
 
         socket.on('newRound', (data) => {
             if (!state.joined) return;
             if (state.screen !== 'game') showScreen('game');
 
+            state.players = data.players;
+            state.maxTokens = data.maxTokens;
             state.round = data;
             state.launched = false;
-            state.timerTotal = 20000;
             state.timerEnd = Date.now() + data.timeLeft;
 
-            const me = socket.id;
-            const amConductor = data.conductorId === me;
-            const myTrack = data.trackA.includes(me) ? 'A' : data.trackB.includes(me) ? 'B' : null;
-            const conductorName = nameById(data.conductorId);
+            const myId = socket.id;
+            const mine = me();
+            const amConductor = data.conductorId === myId;
+            const myTrack = data.trackA.includes(myId) ? 'A' : data.trackB.includes(myId) ? 'B' : null;
+            const conductorName = esc(nameById(data.conductorId));
 
             $('round-pill').textContent = `Раунд ${data.round}`;
             $('choice-a-count').textContent = `${data.trackA.length} ${plural(data.trackA.length, 'игрок', 'игрока', 'игроков')}`;
@@ -1185,11 +1838,14 @@
             if (amConductor) {
                 setBanner('Вы — стрелочник', 'Выберите путь A или B, пока не вышло время', 'conductor');
             } else if (myTrack) {
-                setBanner(`Вы лежите на пути ${myTrack}`, `${conductorName} решает, куда пустить трамвай…`);
+                setBanner(`Вы лежите на пути ${myTrack}`, `${conductorName} решает… ${myTokensHTML()}`);
+            } else if (mine && mine.status === 'out') {
+                setBanner('Вы выбыли', 'Смотрите, кто продержится дольше', 'out');
             } else {
-                setBanner('Вы наблюдаете', 'Вы попадёте в игру со следующего раунда');
+                setBanner('Вы наблюдаете', 'Вы сыграете в следующей игре');
             }
 
+            Sound.roundStart();
             callScene('applyRound', data);
         });
 
@@ -1198,18 +1854,75 @@
             state.launched = true;
             $('choice-panel').classList.remove('show');
 
-            const me = socket.id;
+            const myId = socket.id;
             const count = data.victims.length;
             const auto = data.auto ? 'Время вышло — путь выбран случайно. ' : '';
-            if (data.victims.includes(me)) {
-                setBanner('Трамвай едет на вас!', `${auto}Путь ${data.track}`, 'dead');
-            } else if (state.round.conductorId === me) {
+
+            // Новые жетоны: табло обновится после удара
+            state.players = data.players;
+            const iAmHit = data.victims.includes(myId);
+            const iAmOut = data.eliminated.includes(myId);
+
+            if (iAmHit) {
+                setBanner(iAmOut ? 'Вы выбываете!' : 'Трамвай едет на вас!', `${auto}Путь ${data.track} ${myTokensHTML()}`, 'dead');
+            } else if (state.round.conductorId === myId) {
                 setBanner(`Вы выбрали путь ${data.track}`, `${auto}${count} ${plural(count, 'жертва', 'жертвы', 'жертв')}`, 'conductor');
             } else {
                 setBanner(`Трамвай пошёл по пути ${data.track}`, `${auto}${count} ${plural(count, 'жертва', 'жертвы', 'жертв')}`);
             }
 
-            callScene('launch', data.track, data.victims);
+            if (gameScene) {
+                gameScene.launch(data.track, data.victims, data.eliminated);
+                gameScene.time.delayedCall(1700, () => gameScene.updateBoard());
+            } else {
+                callScene('launch', data.track, data.victims, data.eliminated);
+            }
+
+            if (data.eliminated.length) {
+                setTimeout(() => {
+                    const names = data.eliminated.map(nameById);
+                    const big = data.eliminated.includes(myId)
+                        ? 'Вы выбыли'
+                        : names.length === 1 ? `${names[0]} выбывает` : `${names.join(', ')} выбывают`;
+                    announce(big, `${pipsHTML(state.maxTokens)} <span>${state.maxTokens} жетонов смерти</span>`);
+                    Sound.eliminated();
+                }, 2100);
+            }
+        });
+
+        socket.on('gameOver', (data) => {
+            if (!state.joined) return;
+            state.round = null;
+            state.launched = false;
+            $('choice-panel').classList.remove('show');
+
+            const showResults = () => {
+                const winners = data.winners.map(id => (data.standings.find(p => p.id === id) || {}).name || 'Игрок');
+                const iWon = data.winners.includes(socket.id);
+                $('results-reason').textContent = data.reason;
+                $('winner-label').textContent = winners.length > 1 ? 'Выжили' : 'Последний выживший';
+                $('winner-names').textContent = winners.join(', ') || '—';
+                $('results-badge').textContent = iWon ? 'Вы победили!' : 'Игра окончена';
+
+                const list = $('standings');
+                list.innerHTML = '';
+                data.standings.forEach((p, i) => {
+                    const li = document.createElement('li');
+                    if (p.status === 'out') li.classList.add('out');
+                    if (data.winners.includes(p.id)) li.classList.add('win');
+                    li.innerHTML = `<span class="place">${i + 1}</span><span class="nm"></span>${pipsHTML(p.tokens, data.maxTokens)}`;
+                    li.querySelector('.nm').textContent = p.name + (p.id === socket.id ? ' (вы)' : '');
+                    list.append(li);
+                });
+
+                if (gameScene) gameScene.clearRound();
+                showScreen('results');
+                Sound.gameOver(iWon);
+            };
+
+            // Даём досмотреть последний удар
+            if (state.screen === 'game') setTimeout(showResults, 1200);
+            else showResults();
         });
 
         socket.on('playerFrame', (data) => {
@@ -1217,16 +1930,8 @@
         });
 
         socket.on('playerLeft', ({ id }) => {
+            state.players = state.players.filter(p => p.id !== id);
             if (gameScene) gameScene.removePlayer(id);
-        });
-
-        socket.on('gameStopped', ({ reason }) => {
-            if (!state.joined) return;
-            state.round = null;
-            $('choice-panel').classList.remove('show');
-            if (gameScene) gameScene.clearRound();
-            showScreen('lobby');
-            toast(reason);
         });
 
         // ====================== СОЕДИНЕНИЕ ======================

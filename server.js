@@ -7,12 +7,15 @@ const path = require('path');
 app.use(express.static(path.join(__dirname, 'public')));
 
 const MIN_PLAYERS = 3;
+const MAX_TOKENS = 5;          // столько жетонов смерти — и игрок выбывает
 const ROUND_TIME = 20000;      // время на выбор стрелочника
 const TROLLEY_TIME = 4200;     // сколько едет трамвай до следующего раунда
+const ELIMINATION_PAUSE = 1800; // дополнительная пауза, если кто-то выбыл
 const START_DELAY = 1500;      // пауза перед первым раундом
 const MAX_FRAME_SIZE = 60000;  // ограничение на размер кадра с камеры
 
-// Игроки в лобби/игре по порядку входа: { id, name }
+// Игроки по порядку входа: { id, name, tokens, status }
+// status: 'active' — в игре, 'out' — выбыл, 'waiting' — ждёт следующей игры
 let players = [];
 let gameStarted = false;
 let isTrolleyMoving = false;
@@ -22,7 +25,9 @@ let roundNumber = 0;
 let nextRoundTimeout = null;
 let choiceTimeout = null;
 
-const isPlayer = (id) => players.some(p => p.id === id);
+const findPlayer = (id) => players.find(p => p.id === id);
+const activePlayers = () => players.filter(p => p.status === 'active');
+const publicPlayers = () => players.map(({ id, name, tokens, status }) => ({ id, name, tokens, status }));
 
 function cleanName(name, fallback) {
     const s = String(name || '').replace(/\s+/g, ' ').trim().slice(0, 16);
@@ -31,8 +36,9 @@ function cleanName(name, fallback) {
 
 function broadcastLobby() {
     io.to('players').emit('lobbyUpdate', {
-        players,
+        players: publicPlayers(),
         minPlayers: MIN_PLAYERS,
+        maxTokens: MAX_TOKENS,
         gameStarted
     });
 }
@@ -44,15 +50,13 @@ function clearTimers() {
     choiceTimeout = null;
 }
 
-function stopGame(reason) {
-    clearTimers();
-    gameStarted = false;
-    isTrolleyMoving = false;
-    currentRound = null;
-    currentConductorIndex = -1;
-    roundNumber = 0;
-    io.to('players').emit('gameStopped', { reason });
-    broadcastLobby();
+function roundPayload() {
+    return {
+        ...currentRound,
+        players: publicPlayers(),
+        maxTokens: MAX_TOKENS,
+        timeLeft: Math.max(0, currentRound.deadline - Date.now())
+    };
 }
 
 io.on('connection', (socket) => {
@@ -60,28 +64,29 @@ io.on('connection', (socket) => {
 
     socket.on('joinLobby', (data) => {
         const name = cleanName(data && data.name, `Игрок ${players.length + 1}`);
-        const existing = players.find(p => p.id === socket.id);
+        const existing = findPlayer(socket.id);
         if (existing) {
             existing.name = name;
         } else {
-            players.push({ id: socket.id, name });
+            players.push({ id: socket.id, name, tokens: 0, status: gameStarted ? 'waiting' : 'active' });
             socket.join('players');
         }
         console.log(`${name} в лобби. Всего: ${players.length}`);
         broadcastLobby();
 
-        // Игра уже идёт — подключаем зрителем до следующего раунда
+        // Игра уже идёт — показываем её, а играть можно со следующей
         if (gameStarted) {
             socket.emit('startGame');
-            if (currentRound) socket.emit('newRound', roundPayloadFor(currentRound));
+            if (currentRound) socket.emit('newRound', roundPayload());
         }
     });
 
     socket.on('leaveLobby', () => removePlayer(socket));
 
     socket.on('startGameRequest', () => {
-        if (gameStarted || !isPlayer(socket.id) || players.length < MIN_PLAYERS) return;
+        if (gameStarted || !findPlayer(socket.id) || players.length < MIN_PLAYERS) return;
         console.log('Игра запущена');
+        players.forEach(p => { p.tokens = 0; p.status = 'active'; });
         gameStarted = true;
         currentConductorIndex = -1;
         roundNumber = 0;
@@ -101,7 +106,7 @@ io.on('connection', (socket) => {
     socket.on('streamFrame', (frame) => {
         if (typeof frame !== 'string' || frame.length > MAX_FRAME_SIZE) return;
         if (!frame.startsWith('data:image/jpeg')) return;
-        if (!isPlayer(socket.id)) return;
+        if (!findPlayer(socket.id)) return;
         io.to('players').volatile.emit('playerFrame', { id: socket.id, frame });
     });
 
@@ -114,7 +119,7 @@ io.on('connection', (socket) => {
 function removePlayer(socket) {
     const idx = players.findIndex(p => p.id === socket.id);
     if (idx === -1) return;
-    players.splice(idx, 1);
+    const [removed] = players.splice(idx, 1);
     socket.leave('players');
     io.to('players').emit('playerLeft', { id: socket.id });
 
@@ -123,13 +128,13 @@ function removePlayer(socket) {
         return;
     }
 
-    if (players.length < MIN_PLAYERS) {
-        stopGame('Недостаточно игроков — ждём новых участников');
-        return;
-    }
-
     // Сохраняем очередь стрелочников после удаления
     if (idx <= currentConductorIndex) currentConductorIndex--;
+
+    if (removed.status === 'active' && activePlayers().length < MIN_PLAYERS) {
+        finishGame('Слишком много игроков вышло');
+        return;
+    }
     broadcastLobby();
 
     // Ушёл стрелочник до выбора — сразу новый раунд
@@ -142,34 +147,87 @@ function launchTrolley(track, auto) {
     isTrolleyMoving = true;
     clearTimeout(choiceTimeout);
     choiceTimeout = null;
+
     const victims = track === 'A' ? currentRound.trackA : currentRound.trackB;
+    const eliminated = [];
+    victims.forEach(id => {
+        const p = findPlayer(id);
+        if (!p || p.status !== 'active') return;
+        p.tokens++;
+        if (p.tokens >= MAX_TOKENS) {
+            p.status = 'out';
+            eliminated.push(id);
+        }
+    });
+
     console.log(`Трамвай поехал по пути ${track}${auto ? ' (время вышло)' : ''}`);
-    io.to('players').emit('trolleyMoveRemote', { track, auto, victims });
-    nextRoundTimeout = setTimeout(startNewRound, TROLLEY_TIME);
+    io.to('players').emit('trolleyMoveRemote', {
+        track,
+        auto,
+        victims,
+        eliminated,
+        players: publicPlayers(),
+        maxTokens: MAX_TOKENS
+    });
+    nextRoundTimeout = setTimeout(startNewRound, TROLLEY_TIME + (eliminated.length ? ELIMINATION_PAUSE : 0));
 }
 
-function roundPayloadFor(round) {
-    return { ...round, timeLeft: Math.max(0, round.deadline - Date.now()) };
+function finishGame(reason) {
+    clearTimers();
+    const ranked = players
+        .filter(p => p.status !== 'waiting')
+        .sort((a, b) => (a.status === 'out') - (b.status === 'out') || a.tokens - b.tokens);
+    const best = ranked[0];
+    const winners = best
+        ? ranked.filter(p => p.status === best.status && p.tokens === best.tokens).map(p => p.id)
+        : [];
+
+    console.log(`Игра окончена: ${reason}`);
+    io.to('players').emit('gameOver', {
+        reason,
+        winners,
+        standings: ranked.map(({ id, name, tokens, status }) => ({ id, name, tokens, status })),
+        maxTokens: MAX_TOKENS
+    });
+
+    gameStarted = false;
+    isTrolleyMoving = false;
+    currentRound = null;
+    currentConductorIndex = -1;
+    roundNumber = 0;
+    players.forEach(p => { p.status = 'active'; });
+    broadcastLobby();
 }
 
 function startNewRound() {
     clearTimers();
     if (!gameStarted) return;
-    if (players.length < MIN_PLAYERS) {
-        stopGame('Недостаточно игроков — ждём новых участников');
+
+    const active = activePlayers();
+    if (active.length < MIN_PLAYERS) {
+        finishGame(active.length === 1 ? 'Остался последний выживший' : 'Выживших слишком мало для нового раунда');
         return;
     }
 
+    // Следующий стрелочник — следующий по кругу активный игрок
     const N = players.length;
-    currentConductorIndex = (currentConductorIndex + 1 + N) % N;
-    const conductorId = players[currentConductorIndex].id;
+    let conductorIdx = -1;
+    for (let k = 1; k <= N; k++) {
+        const i = (((currentConductorIndex + k) % N) + N) % N;
+        if (players[i].status === 'active') { conductorIdx = i; break; }
+    }
+    currentConductorIndex = conductorIdx;
+    const conductorId = players[conductorIdx].id;
 
-    // Остальных раскладываем по двум путям поочерёдно
+    // Остальных активных раскладываем по двум путям поочерёдно
     const trackA = [];
     const trackB = [];
-    for (let i = 1; i < N; i++) {
-        const victimId = players[(currentConductorIndex + i) % N].id;
-        (i % 2 === 1 ? trackA : trackB).push(victimId);
+    let n = 0;
+    for (let k = 1; k < N; k++) {
+        const p = players[(conductorIdx + k) % N];
+        if (p.status !== 'active') continue;
+        (n % 2 === 0 ? trackA : trackB).push(p.id);
+        n++;
     }
 
     roundNumber++;
@@ -179,11 +237,10 @@ function startNewRound() {
         conductorId,
         trackA,
         trackB,
-        names: Object.fromEntries(players.map(p => [p.id, p.name])),
         deadline: Date.now() + ROUND_TIME
     };
 
-    io.to('players').emit('newRound', roundPayloadFor(currentRound));
+    io.to('players').emit('newRound', roundPayload());
 
     // Стрелочник не успел — путь выбирается случайно
     choiceTimeout = setTimeout(() => {
@@ -193,7 +250,7 @@ function startNewRound() {
     }, ROUND_TIME);
 
     console.log(`=== РАУНД ${roundNumber} ===`);
-    console.log(`Стрелочник: ${players[currentConductorIndex].name}`);
+    console.log(`Стрелочник: ${players[conductorIdx].name}`);
     console.log(`Путь А: ${trackA.length} чел. | Путь Б: ${trackB.length} чел.`);
 }
 
