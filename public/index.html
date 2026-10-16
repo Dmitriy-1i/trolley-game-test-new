@@ -3,94 +3,586 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Трамвай смерти — Мультиплеер</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>Трамвай смерти</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Unbounded:wght@600;800&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
     <script src="/socket.io/socket.io.js"></script>
     <style>
-        body {
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-            background: #000;
+        :root {
+            --bg: #0b0d17;
+            --bg-2: #141829;
+            --surface: rgba(255, 255, 255, 0.05);
+            --surface-2: rgba(255, 255, 255, 0.09);
+            --border: rgba(255, 255, 255, 0.1);
+            --text: #f1f3fa;
+            --muted: #9097b0;
+            --accent: #ff3d6e;
+            --accent-2: #ff7a45;
+            --track-a: #3ddc97;
+            --track-b: #ffb020;
+            --gold: #ffd166;
+            --danger: #ff4d5e;
+            --radius: 18px;
+            --font: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --font-display: 'Unbounded', var(--font);
         }
+
+        * { box-sizing: border-box; }
+
+        html, body {
+            margin: 0;
+            height: 100%;
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--font);
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            background:
+                radial-gradient(1000px 600px at 15% -10%, rgba(255, 61, 110, 0.18), transparent 60%),
+                radial-gradient(900px 600px at 110% 110%, rgba(61, 220, 151, 0.12), transparent 60%),
+                var(--bg);
+            overflow: hidden;
+        }
+
+        button, input { font: inherit; color: inherit; }
+
+        .screen {
+            position: fixed;
+            inset: 0;
+            display: none;
+            overflow-y: auto;
+            padding: 24px 16px;
+        }
+        .screen.active { display: flex; animation: fadeIn .35s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            border: 0;
+            border-radius: 14px;
+            padding: 14px 22px;
+            font-weight: 600;
+            font-size: 16px;
+            cursor: pointer;
+            transition: transform .12s ease, filter .15s ease, background .15s ease, opacity .15s;
+        }
+        .btn:active:not(:disabled) { transform: scale(0.97); }
+        .btn:disabled { opacity: .4; cursor: not-allowed; }
+        .btn:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent), var(--accent-2));
+            color: #fff;
+            box-shadow: 0 10px 30px rgba(255, 61, 110, 0.35);
+        }
+        .btn-primary:hover:not(:disabled) { filter: brightness(1.08); }
+        .btn-ghost { background: var(--surface-2); border: 1px solid var(--border); }
+        .btn-ghost:hover { background: rgba(255, 255, 255, 0.14); }
+        .btn-sm { padding: 9px 14px; font-size: 14px; border-radius: 12px; }
+
+        /* ===== Главное меню ===== */
+        #screen-menu { align-items: center; justify-content: center; }
+        .hero { width: 100%; max-width: 520px; padding: 36px 32px; margin: auto; }
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--muted);
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            padding: 6px 12px;
+            border-radius: 999px;
+        }
+        .badge .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--track-a); box-shadow: 0 0 10px var(--track-a); }
+        h1 {
+            font-family: var(--font-display);
+            font-weight: 800;
+            font-size: clamp(36px, 8vw, 56px);
+            line-height: 1.02;
+            letter-spacing: -0.02em;
+            margin: 20px 0 14px;
+        }
+        h1 span {
+            background: linear-gradient(135deg, var(--accent), var(--accent-2));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        .lead { color: var(--muted); font-size: 16px; line-height: 1.55; margin: 0 0 28px; }
+        .field-label { display: block; font-size: 14px; font-weight: 500; color: var(--muted); margin-bottom: 8px; }
+        .input {
+            width: 100%;
+            padding: 15px 16px;
+            border-radius: 14px;
+            border: 1px solid var(--border);
+            background: rgba(0, 0, 0, 0.25);
+            font-size: 17px;
+            outline: none;
+            transition: border-color .15s, box-shadow .15s;
+        }
+        .input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(255, 61, 110, 0.18); }
+        #join-form .btn { width: 100%; margin-top: 14px; padding: 16px; font-size: 17px; }
+        .steps { list-style: none; padding: 0; margin: 28px 0 0; display: grid; gap: 12px; }
+        .steps li { display: flex; gap: 12px; align-items: flex-start; color: var(--muted); font-size: 14px; line-height: 1.45; }
+        .steps b { color: var(--text); font-weight: 600; }
+        .step-num {
+            flex: none;
+            width: 26px; height: 26px;
+            border-radius: 8px;
+            display: grid; place-items: center;
+            font-size: 13px; font-weight: 700;
+            background: var(--surface-2);
+            color: var(--text);
+        }
+
+        /* ===== Лобби ===== */
+        #screen-lobby { justify-content: center; }
+        .lobby { width: 100%; max-width: 980px; margin: auto; }
+        .lobby-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+        .lobby-header h2 { font-family: var(--font-display); font-size: 28px; margin: 0; }
+        .pill {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 7px 14px; border-radius: 999px;
+            background: var(--surface-2); border: 1px solid var(--border);
+            font-size: 14px; font-weight: 500;
+        }
+        .pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--track-b); }
+        .pill.ready .dot { background: var(--track-a); box-shadow: 0 0 10px var(--track-a); }
+        .lobby-grid { display: grid; grid-template-columns: 1.1fr 1fr; gap: 20px; }
+        @media (max-width: 760px) { .lobby-grid { grid-template-columns: 1fr; } }
+
+        .camera-card { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+        .camera-frame {
+            position: relative;
+            aspect-ratio: 4 / 3;
+            border-radius: 14px;
+            overflow: hidden;
+            background: #06070d;
+            display: grid; place-items: center;
+        }
+        .camera-frame video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+        .camera-placeholder { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 14px; text-align: center; padding: 20px; }
+        .camera-status { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); }
+        .camera-status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+        .camera-status.on .dot { background: var(--track-a); box-shadow: 0 0 8px var(--track-a); }
+        .camera-status.off .dot { background: var(--danger); }
+
+        .players-card { padding: 22px; display: flex; flex-direction: column; }
+        .players-card h3 { margin: 0 0 14px; font-size: 18px; display: flex; justify-content: space-between; align-items: baseline; }
+        .players-card h3 small { color: var(--muted); font-weight: 500; font-size: 14px; }
+        #player-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; max-height: 300px; overflow-y: auto; }
+        #player-list li {
+            display: flex; align-items: center; gap: 12px;
+            padding: 10px 12px; border-radius: 12px;
+            background: rgba(0, 0, 0, 0.2);
+            animation: fadeIn .25s ease;
+        }
+        .avatar {
+            width: 36px; height: 36px; border-radius: 10px;
+            display: grid; place-items: center;
+            font-weight: 700; font-size: 15px; color: #0b0d17;
+            flex: none;
+        }
+        .tag { margin-left: auto; font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 6px; background: var(--surface-2); color: var(--muted); }
+        .tag.me { background: rgba(255, 61, 110, 0.18); color: #ff9db5; }
+        .slot-empty { border: 1px dashed var(--border); background: transparent !important; color: var(--muted); font-size: 14px; }
+        .slot-empty .avatar { background: var(--surface); color: var(--muted); }
+        .progress { height: 6px; background: var(--surface-2); border-radius: 99px; overflow: hidden; margin: 18px 0 10px; }
+        .progress > div { height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .4s ease; }
+        #lobby-hint { color: var(--muted); font-size: 14px; margin: 0 0 16px; min-height: 20px; }
+        #start-btn { width: 100%; padding: 16px; font-size: 17px; margin-top: auto; }
+
+        /* ===== Игра ===== */
+        #screen-game { padding: 0; }
+        #game-container { position: absolute; inset: 0; }
+        #game-container canvas { display: block; }
+        .hud { position: absolute; left: 0; right: 0; pointer-events: none; display: flex; padding: 14px 16px; gap: 12px; }
+        .hud > * { pointer-events: auto; }
+        .hud-top { top: 0; align-items: flex-start; justify-content: space-between; }
+        .hud-bottom { bottom: 0; justify-content: center; padding-bottom: max(18px, env(safe-area-inset-bottom)); }
+        .round-pill { font-family: var(--font-display); font-size: 13px; letter-spacing: .04em; }
+
+        .banner {
+            min-width: min(440px, 60vw);
+            max-width: 560px;
+            padding: 12px 18px 14px;
+            text-align: center;
+            border-radius: 16px;
+            background: rgba(11, 13, 23, 0.72);
+            border: 1px solid var(--border);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            transition: border-color .3s, box-shadow .3s;
+        }
+        .banner.conductor { border-color: rgba(255, 209, 102, 0.6); box-shadow: 0 0 40px rgba(255, 209, 102, 0.18); }
+        .banner.dead { border-color: rgba(255, 77, 94, 0.7); box-shadow: 0 0 40px rgba(255, 77, 94, 0.25); }
+        #role-title { font-family: var(--font-display); font-size: clamp(15px, 2.4vw, 20px); font-weight: 600; }
+        #role-sub { color: var(--muted); font-size: 14px; margin-top: 4px; }
+        .timer { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+        .timer-bar { flex: 1; height: 6px; background: var(--surface-2); border-radius: 99px; overflow: hidden; }
+        .timer-bar > div { height: 100%; width: 100%; background: var(--track-a); border-radius: 99px; }
+        .timer.urgent .timer-bar > div { background: var(--danger); }
+        #timer-text { font-variant-numeric: tabular-nums; font-weight: 600; font-size: 14px; width: 30px; text-align: right; }
+        .timer.hidden { visibility: hidden; }
+
+        #choice-panel { display: none; gap: 14px; }
+        #choice-panel.show { display: flex; animation: fadeIn .3s ease; }
+        .choice-btn {
+            min-width: 200px;
+            padding: 14px 22px;
+            border-radius: 16px;
+            border: 2px solid transparent;
+            color: #0b0d17;
+            font-weight: 700;
+            flex-direction: column;
+            gap: 2px;
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+        }
+        .choice-btn .big { font-family: var(--font-display); font-size: 20px; }
+        .choice-btn .small { font-size: 13px; font-weight: 600; opacity: .75; }
+        .choice-btn kbd {
+            position: absolute; top: 8px; right: 10px;
+            font: 600 11px var(--font);
+            padding: 2px 6px; border-radius: 5px;
+            background: rgba(0, 0, 0, 0.18);
+        }
+        .choice-btn { position: relative; }
+        .choice-a { background: var(--track-a); }
+        .choice-b { background: var(--track-b); }
+        .choice-btn:hover:not(:disabled) { filter: brightness(1.1); transform: translateY(-2px); }
+        @media (max-width: 600px) {
+            .choice-btn { min-width: 0; flex: 1; padding: 12px; }
+            .choice-btn kbd { display: none; }
+            .choice-btn .big { font-size: 16px; white-space: nowrap; }
+            .hud-top { flex-wrap: wrap; justify-content: center; }
+            .banner { order: 3; width: 100%; min-width: 0; }
+        }
+
+        /* ===== Уведомления ===== */
+        #toasts { position: fixed; left: 50%; bottom: 110px; transform: translateX(-50%); display: grid; gap: 8px; z-index: 50; pointer-events: none; width: max-content; max-width: calc(100vw - 32px); }
+        .toast {
+            padding: 12px 18px; border-radius: 14px;
+            background: rgba(20, 24, 41, 0.92); border: 1px solid var(--border);
+            font-size: 15px; font-weight: 500; text-align: center;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+            animation: toastIn .3s ease;
+        }
+        .toast.out { animation: toastOut .3s ease forwards; }
+        @keyframes toastIn { from { opacity: 0; transform: translateY(10px) scale(.97); } }
+        @keyframes toastOut { to { opacity: 0; transform: translateY(-6px); } }
+
+        .conn-lost {
+            position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+            z-index: 60; display: none;
+            background: var(--danger); color: #fff; font-weight: 600; font-size: 14px;
+            padding: 8px 16px; border-radius: 999px;
+        }
+        .conn-lost.show { display: block; }
     </style>
 </head>
 
 <body>
+    <div class="conn-lost" id="conn-lost">Нет связи с сервером — переподключаемся…</div>
 
-    <div id="video-storage" style="display: none;">
-        <video id="localVideo" autoplay playsinline muted></video>
-    </div>
+    <!-- ===== Главное меню ===== -->
+    <section class="screen active" id="screen-menu">
+        <div class="card hero">
+            <span class="badge"><span class="dot"></span>Мультиплеер · с веб-камерой</span>
+            <h1>Трамвай<br><span>смерти</span></h1>
+            <p class="lead">Классическая проблема вагонетки, только решать её будут ваши друзья — в реальном времени и на камеру.</p>
+            <form id="join-form" autocomplete="off">
+                <label class="field-label" for="name-input">Как вас зовут?</label>
+                <input class="input" id="name-input" maxlength="16" placeholder="Например, Дима" autocomplete="nickname" required>
+                <button class="btn btn-primary" type="submit">Войти в лобби →</button>
+            </form>
+            <ul class="steps">
+                <li><span class="step-num">1</span><span>Соберите <b>минимум 3 игрока</b> в лобби и включите камеру.</span></li>
+                <li><span class="step-num">2</span><span>Каждый раунд один игрок становится <b>стрелочником</b>, остальные лежат на путях A и B.</span></li>
+                <li><span class="step-num">3</span><span>У стрелочника <b>20 секунд</b> на выбор. Не успел — путь выберется случайно.</span></li>
+            </ul>
+        </div>
+    </section>
+
+    <!-- ===== Лобби ===== -->
+    <section class="screen" id="screen-lobby">
+        <div class="lobby">
+            <div class="lobby-header">
+                <button class="btn btn-ghost btn-sm" id="lobby-back">← Выйти</button>
+                <h2>Лобби</h2>
+                <span class="pill" id="lobby-pill"><span class="dot"></span><span id="lobby-pill-text">Ждём игроков</span></span>
+            </div>
+            <div class="lobby-grid">
+                <div class="card camera-card">
+                    <div class="camera-frame">
+                        <video id="localVideo" autoplay playsinline muted></video>
+                        <div class="camera-placeholder" id="camera-placeholder">Разрешите доступ к камере, чтобы другие игроки вас видели</div>
+                    </div>
+                    <div class="camera-status" id="camera-status"><span class="dot"></span><span id="camera-status-text">Запрашиваем камеру…</span></div>
+                </div>
+                <div class="card players-card">
+                    <h3>Игроки <small id="player-count">0</small></h3>
+                    <ul id="player-list"></ul>
+                    <div class="progress"><div id="lobby-progress"></div></div>
+                    <p id="lobby-hint"></p>
+                    <button class="btn btn-primary" id="start-btn" disabled>Начать игру</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== Игра ===== -->
+    <section class="screen" id="screen-game">
+        <div id="game-container"></div>
+        <div class="hud hud-top">
+            <span class="pill round-pill" id="round-pill">Раунд —</span>
+            <div class="banner" id="banner">
+                <div id="role-title">Готовимся…</div>
+                <div id="role-sub">Первый раунд вот-вот начнётся</div>
+                <div class="timer hidden" id="timer">
+                    <div class="timer-bar"><div id="timer-fill"></div></div>
+                    <span id="timer-text">20</span>
+                </div>
+            </div>
+            <button class="btn btn-ghost btn-sm" id="game-leave">Выйти</button>
+        </div>
+        <div class="hud hud-bottom">
+            <div id="choice-panel">
+                <button class="btn choice-btn choice-a" data-track="A"><kbd>1</kbd><span class="big">Путь A</span><span class="small" id="choice-a-count"></span></button>
+                <button class="btn choice-btn choice-b" data-track="B"><kbd>2</kbd><span class="big">Путь B</span><span class="small" id="choice-b-count"></span></button>
+            </div>
+        </div>
+    </section>
+
+    <div id="toasts" aria-live="polite"></div>
 
     <script>
         const socket = io();
 
-        const config = {
-            type: Phaser.AUTO,
-            width: window.innerWidth,
-            height: window.innerHeight,
-            backgroundColor: '#1a1a2e',
-            scale: {
-                mode: Phaser.Scale.FIT,
-                autoCenter: Phaser.Scale.CENTER_BOTH,
-                width: 1280,
-                height: 720
-            },
-            scene: []
+        // ====================== СОСТОЯНИЕ ======================
+        const state = {
+            name: '',
+            joined: false,
+            screen: 'menu',
+            players: [],
+            round: null,
+            launched: false,
+            timerEnd: 0
         };
 
-        const game = new Phaser.Game(config);
+        const $ = (id) => document.getElementById(id);
+        const plural = (n, one, few, many) => {
+            const m10 = n % 10, m100 = n % 100;
+            if (m10 === 1 && m100 !== 11) return one;
+            if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return few;
+            return many;
+        };
+        const hueFor = (id) => {
+            let h = 0;
+            for (const c of id) h = (h * 31 + c.charCodeAt(0)) % 360;
+            return h;
+        };
+        const initials = (name) => name.trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase() || '?';
 
-        // ====================== ГЛАВНОЕ МЕНЮ ======================
-        class MenuScene extends Phaser.Scene {
-            constructor() { super('MenuScene'); }
-            create() {
-                const w = this.sys.game.config.width;
-                const h = this.sys.game.config.height;
-
-                this.add.text(w / 2, h * 0.25, "ТРАМВАЙ СМЕРТИ", { fontSize: '72px', fill: '#ff3366', fontStyle: 'bold' }).setOrigin(0.5);
-                this.add.text(w / 2, h * 0.38, "Многопользовательская версия", { fontSize: '28px', fill: '#bbbbff' }).setOrigin(0.5);
-
-                const joinBtn = this.add.rectangle(w / 2, h * 0.65, 420, 90, 0x00cc66).setInteractive({ useHandCursor: true });
-                this.add.text(w / 2, h * 0.65, "ПРИСОЕДИНИТЬСЯ К ИГРЕ", { fontSize: '34px', fill: '#000', fontStyle: 'bold' }).setOrigin(0.5);
-
-                joinBtn.on('pointerdown', () => this.scene.start('LobbyScene'));
-                joinBtn.on('pointerover', () => joinBtn.setFillStyle(0x00ff99));
-                joinBtn.on('pointerout', () => joinBtn.setFillStyle(0x00cc66));
-            }
+        function showScreen(name) {
+            state.screen = name;
+            document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === `screen-${name}`));
+            if (name === 'game') ensureGame();
         }
+
+        function toast(text, ms = 3200) {
+            const el = document.createElement('div');
+            el.className = 'toast';
+            el.textContent = text;
+            $('toasts').appendChild(el);
+            setTimeout(() => {
+                el.classList.add('out');
+                setTimeout(() => el.remove(), 300);
+            }, ms);
+        }
+
+        // ====================== МЕНЮ ======================
+        try { $('name-input').value = localStorage.getItem('trolley-name') || ''; } catch (e) { }
+
+        $('join-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const name = $('name-input').value.trim();
+            if (!name) return;
+            state.name = name;
+            try { localStorage.setItem('trolley-name', name); } catch (e) { }
+            state.joined = true;
+            socket.emit('joinLobby', { name });
+            showScreen('lobby');
+            startCamera();
+        });
+
+        function leave() {
+            state.joined = false;
+            state.round = null;
+            socket.emit('leaveLobby');
+            if (gameScene) gameScene.clearRound();
+            showScreen('menu');
+        }
+        $('lobby-back').addEventListener('click', leave);
+        $('game-leave').addEventListener('click', leave);
 
         // ====================== ЛОББИ ======================
-        class LobbyScene extends Phaser.Scene {
-            constructor() { super('LobbyScene'); }
-            create() {
-                const w = this.sys.game.config.width;
-                const h = this.sys.game.config.height;
+        $('start-btn').addEventListener('click', () => socket.emit('startGameRequest'));
 
-                this.add.rectangle(0, 0, w, h, 0x0f0f1e).setOrigin(0);
+        socket.on('lobbyUpdate', (data) => {
+            state.players = data.players;
+            const count = data.players.length;
+            const min = data.minPlayers;
+            const ready = count >= min;
 
-                this.add.text(w / 2, 80, "ЛОББИ", { fontSize: '52px', fill: '#fff' }).setOrigin(0.5);
-                this.statusText = this.add.text(w / 2, 160, "Ожидание игроков...", { fontSize: '32px', fill: '#ffff00' }).setOrigin(0.5);
-                this.playerListText = this.add.text(w / 2, 240, "", { fontSize: '26px', fill: '#ccc', align: 'center' }).setOrigin(0.5);
+            $('player-count').textContent = `${count} ${plural(count, 'игрок', 'игрока', 'игроков')}`;
+            $('lobby-progress').style.width = `${Math.min(1, count / min) * 100}%`;
+            $('lobby-pill').classList.toggle('ready', ready);
+            $('lobby-pill-text').textContent = data.gameStarted ? 'Игра идёт' : ready ? 'Можно начинать' : 'Ждём игроков';
+            $('start-btn').disabled = !ready || data.gameStarted;
+            $('lobby-hint').textContent = ready
+                ? 'Все готовы? Любой игрок может запустить игру.'
+                : `Нужно ещё ${min - count} ${plural(min - count, 'игрок', 'игрока', 'игроков')}. Отправьте друзьям ссылку на эту страницу.`;
 
-                this.startBtn = this.add.rectangle(w / 2, h - 140, 340, 80, 0xff3366).setInteractive().setVisible(false);
-                this.add.text(w / 2, h - 140, "НАЧАТЬ ИГРУ", { fontSize: '34px', fill: '#fff', fontStyle: 'bold' }).setOrigin(0.5);
-
-                this.startBtn.on('pointerdown', () => socket.emit('startGameRequest'));
-
-                socket.on('lobbyUpdate', (data) => {
-                    this.statusText.setText(`Игроков подключено: ${data.count}`);
-                    let list = "Подключённые игроки:\n";
-                    data.players.forEach((id, i) => list += `Игрок ${i + 1}: ${id.slice(-6)}\n`);
-                    this.playerListText.setText(list);
-                    this.startBtn.setVisible(data.count >= 3);
-                });
-
-                socket.emit('playerJoinLobby');
+            const list = $('player-list');
+            list.innerHTML = '';
+            data.players.forEach(p => {
+                const li = document.createElement('li');
+                const av = document.createElement('span');
+                av.className = 'avatar';
+                av.style.background = `hsl(${hueFor(p.id)} 80% 68%)`;
+                av.textContent = initials(p.name);
+                const nm = document.createElement('span');
+                nm.textContent = p.name;
+                li.append(av, nm);
+                if (p.id === socket.id) {
+                    const tag = document.createElement('span');
+                    tag.className = 'tag me';
+                    tag.textContent = 'вы';
+                    li.append(tag);
+                }
+                list.append(li);
+            });
+            for (let i = count; i < min; i++) {
+                const li = document.createElement('li');
+                li.className = 'slot-empty';
+                li.innerHTML = '<span class="avatar">?</span><span>Свободное место</span>';
+                list.append(li);
             }
+
+            if (gameScene) gameScene.updateNames();
+        });
+
+        // ====================== КАМЕРА ======================
+        const CAM_W = 160, CAM_H = 120, FPS = 12, JPEG_QUALITY = 0.6;
+        const localVideo = $('localVideo');
+        const sendCanvas = document.createElement('canvas');
+        sendCanvas.width = CAM_W;
+        sendCanvas.height = CAM_H;
+        const sendCtx = sendCanvas.getContext('2d');
+        let cameraState = 'idle';
+
+        function setCameraStatus(kind, text) {
+            const el = $('camera-status');
+            el.classList.remove('on', 'off');
+            if (kind) el.classList.add(kind);
+            $('camera-status-text').textContent = text;
         }
 
+        function startCamera() {
+            if (cameraState === 'on' || cameraState === 'pending') return;
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                cameraState = 'off';
+                setCameraStatus('off', 'Камера недоступна в этом браузере (нужен HTTPS)');
+                return;
+            }
+            cameraState = 'pending';
+            setCameraStatus(null, 'Запрашиваем камеру…');
+            navigator.mediaDevices.getUserMedia({
+                video: { width: 320, height: 240, frameRate: { ideal: FPS, max: 30 } },
+                audio: false
+            }).then(stream => {
+                cameraState = 'on';
+                localVideo.srcObject = stream;
+                localVideo.play().catch(() => { });
+                $('camera-placeholder').style.display = 'none';
+                setCameraStatus('on', 'Камера включена — вас видят другие игроки');
+            }).catch(err => {
+                cameraState = 'off';
+                console.error('Камера:', err);
+                setCameraStatus('off', 'Камера не включена — другие увидят только ваше имя');
+                $('camera-placeholder').textContent = 'Нет доступа к камере. Разрешите его в настройках браузера и обновите страницу.';
+            });
+        }
+
+        // Квадратный центр кадра, отзеркаленный — как в превью
+        setInterval(() => {
+            if (!state.joined || cameraState !== 'on' || localVideo.readyState < 2) return;
+            const vw = localVideo.videoWidth, vh = localVideo.videoHeight;
+            if (!vw || !vh) return;
+            const scale = Math.max(CAM_W / vw, CAM_H / vh);
+            const dw = vw * scale, dh = vh * scale;
+            sendCtx.save();
+            sendCtx.translate(CAM_W, 0);
+            sendCtx.scale(-1, 1);
+            sendCtx.drawImage(localVideo, (CAM_W - dw) / 2, (CAM_H - dh) / 2, dw, dh);
+            sendCtx.restore();
+            socket.emit('streamFrame', sendCanvas.toDataURL('image/jpeg', JPEG_QUALITY));
+        }, 1000 / FPS);
+
         // ====================== ИГРОВАЯ СЦЕНА ======================
+        const W = 1280, H = 720;
+        const MAIN_Y = 360, SWITCH_X = 330;
+        const TRACK_Y = { A: 215, B: 545 };
+        const TRACK_COLOR = { A: 0x3ddc97, B: 0xffb020 };
+        const CONDUCTOR_POS = { x: 170, y: 160 };
+        const TROLLEY_IDLE_X = 120;
+        const VICTIM_START_X = 640, VICTIM_END_X = 1200;
+        const BOX_W = 160, BOX_H = 120;
+        const FONT = 'Inter, system-ui, sans-serif';
+
+        let game = null;
+        let gameScene = null;
+        const pendingCalls = [];
+
+        function callScene(method, ...args) {
+            if (gameScene) gameScene[method](...args);
+            else pendingCalls.push([method, args]);
+        }
+
+        function ensureGame() {
+            if (game) return;
+            game = new Phaser.Game({
+                type: Phaser.AUTO,
+                parent: 'game-container',
+                backgroundColor: '#0b0d17',
+                scale: {
+                    mode: Phaser.Scale.FIT,
+                    autoCenter: Phaser.Scale.CENTER_BOTH,
+                    width: W,
+                    height: H
+                },
+                scene: [GameScene]
+            });
+        }
+
         class GameScene extends Phaser.Scene {
             constructor() { super('GameScene'); }
 
@@ -99,319 +591,431 @@
             }
 
             create() {
-                const width = this.sys.game.config.width;
-                const height = this.sys.game.config.height;
-                const scene = this;
-                scene.lastFrames = {};
-                this.animationEnabled = false;
-                this.roundCounter = 0;
+                this.boxes = new Map();      // id -> контейнер с камерой
+                this.frameSeq = {};
+                this.paths = {};
 
-                // Очищаем старые слушатели
-                socket.off('newRound');
-                socket.off('playerFrame');
-                socket.off('trolleyMoveRemote');
-                socket.off('resetTrolleyVisual');
+                this.drawBackground();
+                this.buildTracks();
 
-                // Тёмный фон
-                this.add.rectangle(0, 0, width, height, 0x1a1a2e).setOrigin(0);
+                this.trolley = this.add.image(TROLLEY_IDLE_X, MAIN_Y + 4, 'trolley')
+                    .setScale(0.085)
+                    .setOrigin(0.5, 0.88)
+                    .setDepth(20);
 
-                // Базовые настройки позиций
-                this.conductorPos = { x: 150, y: height / 2 };
-                this.victimX = width * 0.6;
-
-                // Массивы для динамических объектов
-                this.victims = []; // Массив контейнеров жертв
-                this.dynamicUI = []; // Массив для рельс, кнопок и текста (чтобы удалять каждый раунд)
-
-
-                // === КАМЕРА ===
-                const localVideo = document.getElementById('localVideo');
-                const sendCanvas = document.createElement('canvas');
-                sendCanvas.width = 160;
-                sendCanvas.height = 120;
-                const sendCtx = sendCanvas.getContext('2d');
-
-                const FPS = 30;
-                const JPEG_QUALITY = 1;
-
-                navigator.mediaDevices.getUserMedia({
-                    video: { width: 160, height: 120, frameRate: { ideal: FPS, max: FPS } },
-                    audio: false
-                }).then(stream => {
-                    localVideo.srcObject = stream;
-                    localVideo.play();
-                    console.log('✅ Камера запущена');
-
-                    let lastSent = 0;
-                    const sendFrame = () => {
-                        const now = Date.now();
-                        if (now - lastSent < 1000 / FPS) {
-                            requestAnimationFrame(sendFrame);
-                            return;
-                        }
-                        lastSent = now;
-
-                        if (localVideo.readyState >= 2) {
-                            sendCtx.drawImage(localVideo, 0, 0, 160, 120);
-                            socket.emit('streamFrame', sendCanvas.toDataURL('image/jpeg', JPEG_QUALITY));
-                        }
-                        requestAnimationFrame(sendFrame);
-                    };
-                    sendFrame();
-                }).catch(err => console.error("Камера:", err));
-
-                // === ГРАФИКА ===
-                const graphics = this.add.graphics();
-                graphics.lineStyle(6, 0x777777);
-
-                this.infoLabel = this.add.text(width / 2, 50, "Ожидание первого раунда...", { fontSize: '32px', fill: '#fff' }).setOrigin(0.5);
-
-                this.trolley = this.add.image(150, height / 2, 'trolley').setScale(0.1);
-
-                const createVictim = (x, y, isConductor = false) => {
-                    const container = this.add.container(x, y);
-                    const bg = this.add.rectangle(0, 0, 165, 125, 0xffffff);
-                    const videoSprite = this.add.sprite(0, 0).setDisplaySize(160, 120);
-
-                    container.add([bg, videoSprite]);
-
-                    container.bg = bg; // Сохраняем ссылку на фон
-                    container.videoSprite = videoSprite;
-                    container.playerId = null;
-                    container.isDead = false;
-
-                    // Метод для смены роли на лету
-                    container.setRole = function (isCond) {
-                        this.bg.setStrokeStyle(isCond ? 6 : 4, isCond ? 0xffd700 : 0x000000);
-                        // Выводим стрелочника поверх остальных при пересечении
-                        if (isCond) {
-                            this.scene.children.bringToTop(this);
-                        }
-                    };
-
-                    container.setRole(isConductor);
-                    return container;
-                };
-
-
-                const frameLoadSeq = {};
-                const applyFrameToTarget = (data) => {
-                    if (!data || !data.frame || !data.id) return;
-
-                    scene.lastFrames[data.id] = data.frame;
-
-                    let target = null;
-                    if (this.conductorBox && this.conductorBox.playerId === data.id) {
-                        target = this.conductorBox;
-                    } else {
-                        // Ищем в массиве жертв
-                        target = this.victims.find(v => v.playerId === data.id);
-                    }
-
-                    if (!target || !target.videoSprite) return;
-
-                    const key = `vid_${data.id.slice(-8)}`;
-                    if (!this.textures.exists(key)) {
-                        this.textures.createCanvas(key, 160, 120);
-                    }
-
-                    // Всегда привязываем текстуру к спрайту!
-                    // Во 2-м раунде текстура уже есть, но новый спрайт о ней не знает.
-                    if (target.videoSprite.texture.key !== key) {
-                        target.videoSprite.setTexture(key);
-                    }
-
-                    const tex = this.textures.get(key);
-                    frameLoadSeq[data.id] = (frameLoadSeq[data.id] || 0) + 1;
-                    const token = frameLoadSeq[data.id];
-                    const img = new Image();
-                    img.onload = () => {
-                        if (frameLoadSeq[data.id] !== token) return;
-                        tex.context.clearRect(0, 0, 160, 120);
-                        tex.context.drawImage(img, 0, 0, 160, 120);
-                        tex.update();
-                        target.videoSprite.setDisplaySize(160, 120);
-                    };
-                    img.src = data.frame;
-                };
-
-                socket.on('playerFrame', (data) => applyFrameToTarget(data));
-
-
-
-                socket.on('newRound', (data) => {
-                    this.roundCounter = (this.roundCounter || 0) + 1;
-                    const amIConductor = socket.id === data.conductorId;
-
-                    this.infoLabel.setText(amIConductor
-                        ? "ТЫ СТРЕЛОЧНИК!\nВыбери путь А или Б"
-                        : "Жди выбора стрелочника...");
-
-                    // 1. Очищаем старый интерфейс
-                    this.dynamicUI.forEach(el => el.destroy());
-                    this.dynamicUI = [];
-
-                    // 2. Пул рамок
-                    let pool = [this.conductorBox, ...this.victims].filter(c => c != null);
-                    this.victims = [];
-
-                    const findAndRemove = (id) => {
-                        const idx = pool.findIndex(c => c.playerId === id);
-                        if (idx !== -1) return pool.splice(idx, 1)[0];
-                        return null;
-                    };
-
-                    // 3. Стрелочник
-                    let nextConductor = findAndRemove(data.conductorId) || pool.pop() || createVictim(this.conductorPos.x, this.conductorPos.y, true);
-                    nextConductor.playerId = data.conductorId;
-                    nextConductor.setRole(true);
-                    this.conductorBox = nextConductor;
-
-                    nextConductor.isDead = false;
-                    this.tweens.add({ targets: nextConductor, x: this.conductorPos.x, y: this.conductorPos.y, alpha: 1, scale: 1, angle: 0, duration: 1200, ease: 'Cubic.easeInOut' });
-
-                    // 4. Настройки путей
-                    const trackA_Y = height * 0.3;
-                    const trackB_Y = height * 0.7;
-                    const startX = width * 0.35; // Откуда начинаем класть жертв
-                    const spacingX = 170;        // Расстояние между жертвами
-
-                    const graphics = this.add.graphics();
-                    graphics.lineStyle(6, 0x777777);
-                    this.dynamicUI.push(graphics);
-
-                    // Функция для отрисовки жертв на конкретном пути
-                    const setupTrack = (victimsArray, targetY, trackName) => {
-                        // Рисуем рельсы
-                        graphics.lineBetween(0, targetY, width, targetY);
-                        const text = this.add.text(20, targetY - 40, trackName, { fontSize: '24px', fill: '#fff' });
-                        this.dynamicUI.push(text);
-
-                        // Кнопка пуска
-                        if (amIConductor) {
-                            const btn = this.add.rectangle(width - 100, targetY, 120, 50, trackName === "ПУТЬ А" ? 0x00ff00 : 0xffaa00).setInteractive();
-                            const btnText = this.add.text(width - 140, targetY - 10, "ПУСК", { fill: '#000', fontStyle: 'bold' });
-
-                            btn.on('pointerdown', () => {
-                                this.dynamicUI.forEach(el => { if (el.type === 'Rectangle') el.disableInteractive(); });
-                                this.startTrolley(targetY);
-                                socket.emit('trolleyGo', { targetY: targetY });
-                            });
-                            this.dynamicUI.push(btn, btnText);
-                        }
-
-                        // Расставляем жертв вдоль рельс
-                        victimsArray.forEach((vId, index) => {
-                            let vBox = findAndRemove(vId) || pool.pop() || createVictim(startX, targetY, false);
-                            vBox.playerId = vId;
-                            vBox.setRole(false);
-                            this.victims.push(vBox);
-
-                            // Сдвигаем каждую следующую жертву правее по оси X
-                            const targetX = startX + (index * spacingX);
-
-                            vBox.isDead = false;
-                            this.tweens.add({ targets: vBox, x: targetX, y: targetY, alpha: 1, scale: 1, angle: 0, duration: 1200, ease: 'Cubic.easeInOut' });
-                        });
-                    };
-
-                    // Генерируем оба пути
-                    setupTrack(data.trackA, trackA_Y, "ПУТЬ А");
-                    setupTrack(data.trackB, trackB_Y, "ПУТЬ Б");
-
-                    // 5. Удаляем лишние рамки
-                    pool.forEach(c => c.destroy());
-                });
-
-                const applyAllFrames = () => {
-                    console.log("applyAllFrames вызван");
-                    [this.victimA, this.victimB, this.conductorBox].forEach(victim => {
-                        if (victim && victim.playerId && scene.lastFrames[victim.playerId]) {
-                            const fakeData = { id: victim.playerId, frame: scene.lastFrames[victim.playerId] };
-                            socket._callbacks['$playerFrame'][0](fakeData);
-                        }
-                    });
-                };
-
-                // Остальные обработчики
-                socket.on('trolleyMoveRemote', (data) => {
-                    const targetY = data.targetY || (height * 0.25);
-                    this.startTrolley(targetY);
-                });
-
-                socket.on('resetTrolleyVisual', () => {
-                    this.tweens.killTweensOf(this.trolley);
-                    this.trolley.x = -300;
-                    this.trolley.y = height / 2;
-                    this.tweens.add({ targets: this.trolley, x: 150, duration: 1000, ease: 'Back.out' });
-                });
-
-                // Функция движения трамвая
-                this.startTrolley = (targetY) => {
-                    this.tweens.killTweensOf(this.trolley);
-
-                    this.tweens.add({
-                        targets: this.trolley,
-                        y: targetY,
-                        duration: 500,
-                        onComplete: () => {
-                            this.tweens.add({
-                                targets: this.trolley,
-                                x: width + 200, // Уезжаем за край экрана
-                                duration: 2500, // Чуть дольше, чтобы успел всех переехать
-                                onUpdate: () => {
-                                    // Проверяем ВСЕХ жертв
-                                    this.victims.forEach(v => {
-                                        // Если жертва на текущем пути (совпадает Y) 
-                                        // и трамвай доехал до её позиции X
-                                        if (!v.isDead && Math.abs(targetY - v.y) < 30 && Math.abs(this.trolley.x - v.x) < 80) {
-                                            this.killVictim(v);
-                                        }
-                                    });
-                                }
-                            });
-                        }
-                    });
-                };
-
-                // Анимация убийства жертвы
-                this.killVictim = (victim) => {
-                    if (!victim || victim.isDead) return;
-
-                    victim.isDead = true;
-                    this.cameras.main.shake(150, 0.01);
-
-                    this.tweens.add({
-                        targets: victim,
-                        alpha: 0,
-                        scale: 0.3,
-                        angle: 45,
-                        y: victim.y - 100,
-                        duration: 400,
-                        ease: 'Power2'
-                    });
-                };
+                gameScene = this;
+                pendingCalls.splice(0).forEach(([m, a]) => this[m](...a));
             }
 
-            update() { }
+            drawBackground() {
+                const g = this.add.graphics();
+                // Мягкая сетка точек
+                g.fillStyle(0xffffff, 0.05);
+                for (let x = 20; x < W; x += 40) {
+                    for (let y = 20; y < H; y += 40) g.fillCircle(x, y, 1.4);
+                }
+                // Земля под путями
+                g.fillStyle(0x161a2c, 1);
+                g.fillRoundedRect(SWITCH_X + 140, TRACK_Y.A - 88, W - SWITCH_X - 150, 176, 24);
+                g.fillRoundedRect(SWITCH_X + 140, TRACK_Y.B - 88, W - SWITCH_X - 150, 176, 24);
+            }
+
+            buildTracks() {
+                const makePath = (y) => {
+                    const p = new Phaser.Curves.Path(-200, MAIN_Y);
+                    p.lineTo(SWITCH_X, MAIN_Y);
+                    p.cubicBezierTo(SWITCH_X + 150, y, SWITCH_X + 80, MAIN_Y, SWITCH_X + 70, y);
+                    p.lineTo(W + 260, y);
+                    return p;
+                };
+                this.paths.A = makePath(TRACK_Y.A);
+                this.paths.B = makePath(TRACK_Y.B);
+
+                // Подсветка путей (при наведении и после выбора)
+                this.highlight = {};
+                ['A', 'B'].forEach(t => {
+                    const hl = this.add.graphics().setAlpha(0);
+                    hl.lineStyle(40, TRACK_COLOR[t], 0.35);
+                    this.paths[t].draw(hl, 128);
+                    this.highlight[t] = hl;
+                });
+
+                const g = this.add.graphics();
+                ['A', 'B'].forEach(t => this.drawRails(g, this.paths[t]));
+
+                // Метки путей
+                ['A', 'B'].forEach(t => {
+                    const y = TRACK_Y[t];
+                    const c = this.add.circle(SWITCH_X + 205, y, 24, TRACK_COLOR[t]).setDepth(5);
+                    c.setStrokeStyle(4, 0x0b0d17);
+                    this.add.text(SWITCH_X + 205, y, t, {
+                        fontFamily: 'Unbounded, ' + FONT, fontSize: '22px', fontStyle: '800', color: '#0b0d17'
+                    }).setOrigin(0.5).setDepth(6);
+                });
+
+                // Стрелка стрелки
+                this.switchArrow = this.add.triangle(SWITCH_X - 10, MAIN_Y, 0, 0, 22, 12, 0, 24, 0xffffff)
+                    .setOrigin(0.5).setDepth(6).setAlpha(0.8);
+            }
+
+            drawRails(g, path) {
+                const len = path.getLength();
+                const pointAt = (d) => path.getPoint(Phaser.Math.Clamp(d / len, 0, 1));
+                const normalAt = (d) => {
+                    const a = pointAt(d - 1), b = pointAt(d + 1);
+                    const dx = b.x - a.x, dy = b.y - a.y, l = Math.hypot(dx, dy) || 1;
+                    return { x: -dy / l, y: dx / l };
+                };
+                // Шпалы
+                g.lineStyle(7, 0x3a3150, 1);
+                for (let d = 0; d < len; d += 22) {
+                    const p = pointAt(d), n = normalAt(d);
+                    g.lineBetween(p.x - n.x * 16, p.y - n.y * 16, p.x + n.x * 16, p.y + n.y * 16);
+                }
+                // Рельсы
+                [-9, 9].forEach(off => {
+                    g.lineStyle(3, 0xa3abc2, 1);
+                    g.beginPath();
+                    for (let d = 0; d <= len; d += 6) {
+                        const p = pointAt(d), n = normalAt(d);
+                        const x = p.x + n.x * off, y = p.y + n.y * off;
+                        if (d === 0) g.moveTo(x, y); else g.lineTo(x, y);
+                    }
+                    g.strokePath();
+                });
+            }
+
+            // ----- Рамки игроков -----
+            textureFor(id) {
+                const key = `cam_${id}`;
+                if (!this.textures.exists(key)) this.textures.createCanvas(key, CAM_W, CAM_H);
+                return key;
+            }
+
+            nameOf(id) {
+                const p = state.players.find(p => p.id === id);
+                const name = p ? p.name : (state.round && state.round.names[id]) || 'Игрок';
+                return id === socket.id ? `${name} (вы)` : name;
+            }
+
+            createBox(id) {
+                const box = this.add.container(CONDUCTOR_POS.x, CONDUCTOR_POS.y).setDepth(10);
+                const frame = this.add.graphics();
+                const placeholder = this.add.rectangle(0, 0, BOX_W, BOX_H, 0x1b2036);
+                const realName = (this.nameOf(id) || '?').replace(' (вы)', '');
+                const initialsText = this.add.text(0, -4, initials(realName), {
+                    fontFamily: FONT, fontSize: '34px', fontStyle: '700',
+                    color: `hsl(${hueFor(id)}, 80%, 70%)`
+                }).setOrigin(0.5);
+                const video = this.add.image(0, 0, this.textureFor(id)).setDisplaySize(BOX_W, BOX_H);
+                const label = this.add.text(0, BOX_H / 2 + 18, this.nameOf(id), {
+                    fontFamily: FONT, fontSize: '16px', fontStyle: '600', color: '#f1f3fa',
+                    backgroundColor: 'rgba(11,13,23,0.85)', padding: { x: 10, y: 4 }
+                }).setOrigin(0.5);
+                const roleTag = this.add.text(0, -BOX_H / 2 - 16, '', {
+                    fontFamily: FONT, fontSize: '13px', fontStyle: '700', color: '#0b0d17',
+                    padding: { x: 8, y: 3 }
+                }).setOrigin(0.5);
+
+                box.add([frame, placeholder, initialsText, video, label, roleTag]);
+                Object.assign(box, { playerId: id, frame, video, label, roleTag, isDead: false });
+                box.setScale(0.2).setAlpha(0);
+                this.boxes.set(id, box);
+                return box;
+            }
+
+            styleBox(box, role) {
+                const color = role === 'conductor' ? 0xffd166 : TRACK_COLOR[role];
+                box.frame.clear();
+                box.frame.fillStyle(color, 1);
+                box.frame.fillRoundedRect(-BOX_W / 2 - 5, -BOX_H / 2 - 5, BOX_W + 10, BOX_H + 10, 12);
+                if (box.playerId === socket.id) {
+                    box.frame.lineStyle(3, 0xffffff, 1);
+                    box.frame.strokeRoundedRect(-BOX_W / 2 - 9, -BOX_H / 2 - 9, BOX_W + 18, BOX_H + 18, 15);
+                }
+                const tagText = role === 'conductor' ? 'СТРЕЛОЧНИК' : '';
+                box.roleTag.setText(tagText).setVisible(!!tagText);
+                if (tagText) box.roleTag.setBackgroundColor('#ffd166');
+                box.label.setText(this.nameOf(box.playerId));
+            }
+
+            updateNames() {
+                this.boxes.forEach(b => b.label.setText(this.nameOf(b.playerId)));
+            }
+
+            applyFrame(data) {
+                const key = this.textureFor(data.id);
+                const tex = this.textures.get(key);
+                const token = this.frameSeq[data.id] = (this.frameSeq[data.id] || 0) + 1;
+                const img = new Image();
+                img.onload = () => {
+                    if (this.frameSeq[data.id] !== token || !this.textures.exists(key)) return;
+                    tex.context.drawImage(img, 0, 0, CAM_W, CAM_H);
+                    tex.refresh();
+                };
+                img.src = data.frame;
+            }
+
+            removePlayer(id) {
+                const box = this.boxes.get(id);
+                if (box) {
+                    this.boxes.delete(id);
+                    this.tweens.add({ targets: box, alpha: 0, scale: 0.3, duration: 300, onComplete: () => box.destroy() });
+                }
+                if (this.textures.exists(`cam_${id}`)) {
+                    this.time.delayedCall(350, () => this.textures.exists(`cam_${id}`) && this.textures.remove(`cam_${id}`));
+                }
+            }
+
+            clearRound() {
+                this.boxes.forEach(b => b.destroy());
+                this.boxes.clear();
+                this.previewTrack(null);
+                this.resetTrolley(false);
+            }
+
+            // ----- Раунд -----
+            applyRound(data) {
+                const placements = new Map();
+                placements.set(data.conductorId, { x: CONDUCTOR_POS.x, y: CONDUCTOR_POS.y, s: 1, role: 'conductor' });
+
+                ['A', 'B'].forEach(t => {
+                    const ids = t === 'A' ? data.trackA : data.trackB;
+                    const n = ids.length;
+                    const span = VICTIM_END_X - VICTIM_START_X;
+                    const step = n > 1 ? Math.min(190, span / (n - 1)) : 0;
+                    const s = Math.min(1, (step || 190) / 190);
+                    const x0 = n > 1 ? VICTIM_START_X : VICTIM_START_X + 60;
+                    ids.forEach((id, i) => placements.set(id, { x: x0 + i * step, y: TRACK_Y[t], s: Math.max(0.55, s), role: t }));
+                });
+
+                // Убираем тех, кого нет в раунде
+                [...this.boxes.keys()].forEach(id => {
+                    if (!placements.has(id)) this.removePlayer(id);
+                });
+
+                placements.forEach((pos, id) => {
+                    const box = this.boxes.get(id) || this.createBox(id);
+                    box.isDead = false;
+                    this.tweens.killTweensOf(box);
+                    box.setAngle(0);
+                    this.styleBox(box, pos.role);
+                    box.setDepth(pos.role === 'conductor' ? 12 : 10);
+                    this.tweens.add({
+                        targets: box, x: pos.x, y: pos.y, scale: pos.s, alpha: 1, angle: 0,
+                        duration: 900, ease: 'Cubic.easeInOut'
+                    });
+                });
+
+                this.previewTrack(null);
+                this.switchArrow.setAngle(0).setFillStyle(0xffffff);
+                this.resetTrolley(true);
+            }
+
+            previewTrack(track) {
+                ['A', 'B'].forEach(t => {
+                    this.tweens.killTweensOf(this.highlight[t]);
+                    this.tweens.add({ targets: this.highlight[t], alpha: t === track ? 1 : 0, duration: 180 });
+                });
+            }
+
+            resetTrolley(animate) {
+                this.tweens.killTweensOf(this.trolley);
+                if (this.trolleyTween) { this.trolleyTween.stop(); this.trolleyTween = null; }
+                this.trolley.setRotation(0).setY(MAIN_Y + 4);
+                if (!animate) { this.trolley.setX(TROLLEY_IDLE_X); return; }
+                this.trolley.setX(-200);
+                this.tweens.add({ targets: this.trolley, x: TROLLEY_IDLE_X, duration: 900, ease: 'Back.out' });
+            }
+
+            launch(track, victims) {
+                this.previewTrack(track);
+                this.switchArrow.setFillStyle(TRACK_COLOR[track]);
+                this.tweens.add({ targets: this.switchArrow, angle: track === 'A' ? -40 : 40, duration: 200 });
+
+                this.tweens.killTweensOf(this.trolley);
+                const path = this.paths[track];
+                const len = path.getLength();
+                const startT = (this.trolley.x + 200) / len;
+                const victimSet = new Set(victims);
+                const prev = new Phaser.Math.Vector2();
+                const cur = new Phaser.Math.Vector2();
+                const progress = { t: startT };
+
+                this.trolleyTween = this.tweens.add({
+                    targets: progress,
+                    t: 1,
+                    duration: 3200,
+                    ease: 'Sine.easeIn',
+                    onUpdate: () => {
+                        path.getPoint(Math.min(1, progress.t), cur);
+                        path.getPoint(Math.max(0, progress.t - 0.004), prev);
+                        this.trolley.setPosition(cur.x, cur.y + 4);
+                        this.trolley.setRotation(Math.atan2(cur.y - prev.y, cur.x - prev.x) * 0.6);
+
+                        this.boxes.forEach(box => {
+                            if (box.isDead || !victimSet.has(box.playerId)) return;
+                            if (cur.x > box.x - 70) this.killBox(box);
+                        });
+                    }
+                });
+            }
+
+            killBox(box) {
+                box.isDead = true;
+                this.cameras.main.shake(160, 0.008);
+                const flash = this.add.rectangle(0, 0, BOX_W, BOX_H, 0xff4d5e, 0.6);
+                box.add(flash);
+                this.tweens.add({
+                    targets: box,
+                    alpha: 0,
+                    scale: box.scale * 0.5,
+                    angle: Phaser.Math.Between(-60, 60),
+                    y: box.y - 140,
+                    x: box.x + 60,
+                    duration: 600,
+                    ease: 'Cubic.easeOut',
+                    onComplete: () => flash.destroy()
+                });
+                if (box.playerId === socket.id) {
+                    this.cameras.main.flash(250, 255, 60, 80);
+                }
+            }
         }
 
-        // Регистрация сцен
-        game.scene.add('MenuScene', MenuScene);
-        game.scene.add('LobbyScene', LobbyScene);
-        game.scene.add('GameScene', GameScene);
+        // ====================== HUD ======================
+        const choiceButtons = document.querySelectorAll('.choice-btn');
 
-        game.scene.start('MenuScene');
+        function setBanner(title, sub, kind) {
+            $('role-title').textContent = title;
+            $('role-sub').textContent = sub;
+            $('banner').className = `banner ${kind || ''}`;
+        }
 
-        // Переход в игру + сразу запрашиваем первый раунд
+        function nameById(id) {
+            const p = state.players.find(p => p.id === id);
+            return p ? p.name : (state.round && state.round.names[id]) || 'Игрок';
+        }
+
+        function updateTimer() {
+            const timer = $('timer');
+            if (!state.round || state.launched) {
+                timer.classList.add('hidden');
+            } else {
+                const left = Math.max(0, state.timerEnd - Date.now());
+                timer.classList.remove('hidden');
+                timer.classList.toggle('urgent', left < 5000);
+                $('timer-fill').style.width = `${(left / state.timerTotal) * 100}%`;
+                $('timer-text').textContent = Math.ceil(left / 1000);
+            }
+            requestAnimationFrame(updateTimer);
+        }
+        requestAnimationFrame(updateTimer);
+
+        function chooseTrack(track) {
+            if (!state.round || state.launched || state.round.conductorId !== socket.id) return;
+            choiceButtons.forEach(b => b.disabled = true);
+            socket.emit('trolleyGo', { track });
+        }
+
+        choiceButtons.forEach(btn => {
+            const t = btn.dataset.track;
+            btn.addEventListener('click', () => chooseTrack(t));
+            btn.addEventListener('mouseenter', () => gameScene && gameScene.previewTrack(t));
+            btn.addEventListener('mouseleave', () => gameScene && !state.launched && gameScene.previewTrack(null));
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (state.screen !== 'game') return;
+            if (e.key === '1' || e.key === 'ArrowUp') chooseTrack('A');
+            if (e.key === '2' || e.key === 'ArrowDown') chooseTrack('B');
+        });
+
+        // ====================== СОБЫТИЯ СЕРВЕРА ======================
         socket.on('startGame', () => {
-            game.scene.stop('LobbyScene');
-            game.scene.start('GameScene');
+            if (!state.joined) return;
+            showScreen('game');
+            setBanner('Игра начинается…', 'Первый стрелочник будет выбран через секунду');
+        });
 
-            // Важно: после запуска игры сразу просим сервер начать первый раунд
-            setTimeout(() => {
-                socket.emit('requestFirstRound');
-            }, 1500); // небольшая задержка, чтобы сцена успела инициализироваться
+        socket.on('newRound', (data) => {
+            if (!state.joined) return;
+            if (state.screen !== 'game') showScreen('game');
+
+            state.round = data;
+            state.launched = false;
+            state.timerTotal = 20000;
+            state.timerEnd = Date.now() + data.timeLeft;
+
+            const me = socket.id;
+            const amConductor = data.conductorId === me;
+            const myTrack = data.trackA.includes(me) ? 'A' : data.trackB.includes(me) ? 'B' : null;
+            const conductorName = nameById(data.conductorId);
+
+            $('round-pill').textContent = `Раунд ${data.round}`;
+            $('choice-a-count').textContent = `${data.trackA.length} ${plural(data.trackA.length, 'игрок', 'игрока', 'игроков')}`;
+            $('choice-b-count').textContent = `${data.trackB.length} ${plural(data.trackB.length, 'игрок', 'игрока', 'игроков')}`;
+            choiceButtons.forEach(b => b.disabled = false);
+            $('choice-panel').classList.toggle('show', amConductor);
+
+            if (amConductor) {
+                setBanner('Вы — стрелочник', 'Выберите путь A или B, пока не вышло время', 'conductor');
+            } else if (myTrack) {
+                setBanner(`Вы лежите на пути ${myTrack}`, `${conductorName} решает, куда пустить трамвай…`);
+            } else {
+                setBanner('Вы наблюдаете', 'Вы попадёте в игру со следующего раунда');
+            }
+
+            callScene('applyRound', data);
+        });
+
+        socket.on('trolleyMoveRemote', (data) => {
+            if (!state.joined || !state.round) return;
+            state.launched = true;
+            $('choice-panel').classList.remove('show');
+
+            const me = socket.id;
+            const count = data.victims.length;
+            const auto = data.auto ? 'Время вышло — путь выбран случайно. ' : '';
+            if (data.victims.includes(me)) {
+                setBanner('Трамвай едет на вас!', `${auto}Путь ${data.track}`, 'dead');
+            } else if (state.round.conductorId === me) {
+                setBanner(`Вы выбрали путь ${data.track}`, `${auto}${count} ${plural(count, 'жертва', 'жертвы', 'жертв')}`, 'conductor');
+            } else {
+                setBanner(`Трамвай пошёл по пути ${data.track}`, `${auto}${count} ${plural(count, 'жертва', 'жертвы', 'жертв')}`);
+            }
+
+            callScene('launch', data.track, data.victims);
+        });
+
+        socket.on('playerFrame', (data) => {
+            if (gameScene && state.screen === 'game') gameScene.applyFrame(data);
+        });
+
+        socket.on('playerLeft', ({ id }) => {
+            if (gameScene) gameScene.removePlayer(id);
+        });
+
+        socket.on('gameStopped', ({ reason }) => {
+            if (!state.joined) return;
+            state.round = null;
+            $('choice-panel').classList.remove('show');
+            if (gameScene) gameScene.clearRound();
+            showScreen('lobby');
+            toast(reason);
+        });
+
+        // ====================== СОЕДИНЕНИЕ ======================
+        socket.on('disconnect', () => $('conn-lost').classList.add('show'));
+        socket.on('connect', () => {
+            $('conn-lost').classList.remove('show');
+            // После обрыва связи возвращаемся в лобби под тем же именем
+            if (state.joined) {
+                state.round = null;
+                if (gameScene) gameScene.clearRound();
+                showScreen('lobby');
+                socket.emit('joinLobby', { name: state.name });
+            }
         });
     </script>
 </body>
