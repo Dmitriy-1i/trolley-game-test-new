@@ -973,7 +973,7 @@
         const MAIN_Y = 360, SWITCH_X = 330;
         const TRACK_Y = { A: 205, B: 520 };
         // Рисуем в реальном разрешении экрана, а мир остаётся 1280×720 — так текст и графика чёткие
-        const RES = Math.min(3, Math.max(1, Math.ceil((window.devicePixelRatio || 1) * Math.max(window.innerWidth / 1280, window.innerHeight / 720))));
+        const RES = Math.min(2, Math.max(1, Math.ceil((window.devicePixelRatio || 1) * Math.max(window.innerWidth / 1280, window.innerHeight / 720))));
         const TRACK_COLOR = { A: 0x3ddc97, B: 0xffb020 };
         const CONDUCTOR_POS = { x: 170, y: 150 };
         const LEVER_POS = { x: 292, y: 292 };
