@@ -9,8 +9,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const MIN_PLAYERS = 3;
 const MAX_TOKENS = 5;          // столько жетонов смерти — и игрок выбывает
-const ROUND_TIME = 30000;      // время на уговоры и выбор стрелочника
-const SABOTAGE_TIME = 10000;   // время на выбор после карты «Саботаж»
+const ROUND_TIME = 90000;      // время на уговоры и выбор стрелочника
+const SABOTAGE_TIME = 30000;   // время на выбор после карты «Саботаж»
 const REVEAL_BASE = 2200;      // раскрытие карт: база + шаг на каждую карту
 const REVEAL_STEP = 450;
 const TROLLEY_TIME = 4200;     // сколько едет трамвай до следующего раунда
